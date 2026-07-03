@@ -5,6 +5,16 @@
  */
 import { robustFetch } from './network-utils.js';
 
+const _artworkCache = new Map();
+
+function getIsMobile() {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
+function getAspect() {
+  return window.innerWidth <= 768 ? 'tall' : 'square';
+}
+
 async function searchiTunes(query) {
   try {
     const encoded = encodeURIComponent(query);
@@ -35,16 +45,22 @@ async function searchiTunes(query) {
 export async function getAnimatedArtwork(artist, album, title) {
   if (!artist) return null;
 
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  const isMobile = getIsMobile();
   const quality = isMobile ? 'low' : 'high';
+  const aspect = getAspect();
+  const cacheKey = `${artist}|${album || ''}|${title || ''}|${aspect}`;
+
+  const cached = _artworkCache.get(cacheKey);
+  if (cached !== undefined) return cached;
 
   // Strategy 1: Search with "artist album"
   if (album) {
     console.log(`[AnimatedArt] Searching: "${artist} ${album}"`);
     const albumId = await searchiTunes(`${artist} ${album}`);
     if (albumId) {
-      console.log(`[AnimatedArt] Found Album ID via album search: ${albumId}`);
-      return `https://api.spicyamll.online/animatedart?album=${albumId}&quality=${quality}`;
+      const url = `https://api.spicyamll.online/animatedart?album=${albumId}&quality=${quality}&aspect=${aspect}`;
+      _artworkCache.set(cacheKey, url);
+      return url;
     }
   }
 
@@ -53,8 +69,9 @@ export async function getAnimatedArtwork(artist, album, title) {
     console.log(`[AnimatedArt] Album search failed, trying: "${artist} ${title}"`);
     const albumId = await searchiTunes(`${artist} ${title}`);
     if (albumId) {
-      console.log(`[AnimatedArt] Found Album ID via title search: ${albumId}`);
-      return `https://api.spicyamll.online/animatedart?album=${albumId}&quality=${quality}`;
+      const url = `https://api.spicyamll.online/animatedart?album=${albumId}&quality=${quality}&aspect=${aspect}`;
+      _artworkCache.set(cacheKey, url);
+      return url;
     }
   }
 
@@ -62,11 +79,13 @@ export async function getAnimatedArtwork(artist, album, title) {
   console.log(`[AnimatedArt] Trying artist-only search: "${artist}"`);
   const albumId = await searchiTunes(artist);
   if (albumId) {
-    console.log(`[AnimatedArt] Found Album ID via artist-only: ${albumId}`);
-    return `https://api.spicyamll.online/animatedart?album=${albumId}&quality=${quality}`;
+    const url = `https://api.spicyamll.online/animatedart?album=${albumId}&quality=${quality}&aspect=${aspect}`;
+    _artworkCache.set(cacheKey, url);
+    return url;
   }
 
   console.log('[AnimatedArt] No animated artwork found after all strategies');
+  _artworkCache.set(cacheKey, null);
   return null;
 }
 
@@ -107,7 +126,7 @@ export function applyAnimatedArt(mediaBoxEl, videoUrl) {
   video.setAttribute('playsinline', '');
   video.setAttribute('disablepictureinpicture', '');
 
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  const isMobile = getIsMobile();
 
   let localVideoUrl = null;
 
