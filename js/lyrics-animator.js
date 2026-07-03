@@ -623,12 +623,13 @@ function animateSyllable(position, deltaTime) {
               for (let j = 0; j < 32; j++) {
                 const x = (j + 1) / 32;
                 const ef = _empEasing(x);
+                const glowLevel = ef * blur;
                 const offX = -ef * 0.03 * amount * (letterCount / 2 - letterIndex);
                 const offY = -ef * 0.025 * amount;
                 frames.push({
                   offset: x,
                   transform: `scale(${1 + ef * 0.1 * amount}) translate(${offX}em, ${offY}em)`,
-                  textShadow: `0 0 ${0.4 + ef * (30.0 - 0.4)}pt rgba(255, 255, 255, ${ef * blur * 0.5})`,
+                  textShadow: `0 0 ${Math.min(0.3, blur * 0.3)}em rgba(255, 255, 255, ${glowLevel})`,
                 });
               }
 
@@ -641,15 +642,42 @@ function animateSyllable(position, deltaTime) {
               anim.pause();
               _empAnims.push(anim);
               letter._empAnim = anim;
+
+              const floatFrames = [
+                { offset: 0, transform: "translateY(0em)" },
+              ];
+              for (let j = 0; j < 32; j++) {
+                const x = (j + 1) / 32;
+                const y = Math.sin(x * Math.PI);
+                floatFrames.push({
+                  offset: x,
+                  transform: `translateY(${-y * 0.05}em)`,
+                });
+              }
+              const floatAnim = letter.HTMLElement.animate(floatFrames, {
+                duration: wordDur * 1.4,
+                delay: delay - 400,
+                fill: "both",
+                composite: "add",
+              });
+              floatAnim.pause();
+              _empAnims.push(floatAnim);
+              letter._empFloatAnim = floatAnim;
+              letter._empFloatEnd = (delay - 400) + wordDur * 1.4;
             });
           }
 
           word.Letters.forEach(letter => {
+            const t = Math.max(0, position - wStart);
             if (letter._empAnim) {
-              const t = Math.max(0, position - wStart);
               letter._empAnim.currentTime = t;
               if (t > 0 && t < wEnd - wStart) letter._empAnim.play();
               else letter._empAnim.pause();
+            }
+            if (letter._empFloatAnim) {
+              letter._empFloatAnim.currentTime = t;
+              if (t > 0 && t < letter._empFloatEnd) letter._empFloatAnim.play();
+              else letter._empFloatAnim.pause();
             }
           });
         }
