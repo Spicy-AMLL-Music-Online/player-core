@@ -1,36 +1,14 @@
-import Kawarp from 'https://esm.sh/@kawarp/core@1.2.0';
+import Dybg from 'https://nurislamaibekuly.github.io/dybg/dybg.js';
 
-let _kawarp = null;
-let _resizeHandler = null;
+let _dybg = null;
 let _videoUpdateTimer = null;
 
-// Hidden canvas for frame capture (reused)
+// Hidden canvas for frame capture (reused for video)
 const _sourceCanvas = document.createElement('canvas');
 const _sourceCtx = _sourceCanvas.getContext('2d', { alpha: false });
-_sourceCanvas.width = 128; // Low resolution for background motion is enough
+_sourceCanvas.width = 128;
 _sourceCanvas.height = 128;
 
-const KawarpOptionsStatic = {
-  warpIntensity: 1,
-  blurPasses: 8,
-  animationSpeed: 1.5,
-  saturation: 1.5,
-  dithering: 0.008,
-  transitionDuration: 500,
-  tintIntensity: 0,
-  scale: 1,
-};
-
-/**
- * Spicy AMLL Player WEB — Dynamic Background
- * Extracts colors from images and creates animated backgrounds.
- */
-
-/**
- * Extract dominant colors from an image element or URL.
- * @param {string} imageUrl
- * @returns {Promise<{vibrant: number[], dark: number[], muted: number[]}>}
- */
 export async function extractColors(imageUrl) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -50,7 +28,6 @@ export async function extractColors(imageUrl) {
         colors.push([imageData[i], imageData[i + 1], imageData[i + 2]]);
       }
 
-      // Sort by saturation * brightness to find vibrant colors
       colors.sort((a, b) => {
         const satA = getColorSaturation(a);
         const satB = getColorSaturation(b);
@@ -87,66 +64,42 @@ function darkenColor(rgb, amount) {
   return rgb.map(c => Math.floor(c * amount));
 }
 
-/**
- * Apply Kawarp animated background to the page.
- * @param {HTMLElement} bgContainer - The .spicy-dynamic-bg element
- * @param {HTMLElement|string} img - The image/video element or URL
- */
 export async function applyLegacyBackground(bgContainer, img) {
   stopKawarp();
 
-  if (_resizeHandler) {
-    window.removeEventListener("resize", _resizeHandler);
-    _resizeHandler = null;
-  }
-
   bgContainer.innerHTML = "";
-  bgContainer.className = "spicy-dynamic-bg KawarpBackground";
+  bgContainer.className = "spicy-dynamic-bg";
 
-  const canvas = document.createElement("canvas");
-  canvas.style.width = "100%";
-  canvas.style.height = "100%";
-
-  const targetWidth = 384;
-  const aspect = window.innerWidth > 0 ? (window.innerHeight / window.innerWidth) : 0.5625;
-  canvas.width = targetWidth;
-  canvas.height = Math.max(1, Math.round(targetWidth * aspect));
-  bgContainer.appendChild(canvas);
-
-  const isPlaying = window.spicyPlayer ? window.spicyPlayer.isPlaying : false;
-  const initialSpeed = isPlaying ? 1.5 : 0.15;
-
-  _kawarp = new Kawarp(canvas, {
-    ...KawarpOptionsStatic,
-    animationSpeed: initialSpeed
+  _dybg = new Dybg({
+    container: bgContainer,
+    blur: 93,
+    layers: 3,
+    speed: 1,
+    twist: 0.3,
   });
-  _kawarp.start();
+
+  if (_dybg._outCanvas) _dybg._outCanvas.style.filter = 'none';
+  if (_dybg._fbCanvas) _dybg._fbCanvas.style.filter = 'none';
 
   const loadSource = async () => {
-    if (!_kawarp) return;
+    if (!_dybg) return;
     if (img instanceof HTMLVideoElement) {
       if (img.readyState >= 2 && img.videoWidth > 0 && img.videoHeight > 0) {
         _sourceCanvas.width = img.videoWidth;
         _sourceCanvas.height = img.videoHeight;
-        _sourceCtx.drawImage(
-          img,
-          0,
-          0,
-          _sourceCanvas.width,
-          _sourceCanvas.height
-        );
-        _kawarp.gl.bindTexture(_kawarp.gl.TEXTURE_2D, _kawarp.sourceTexture);
-        _kawarp.gl.texImage2D(_kawarp.gl.TEXTURE_2D, 0, _kawarp.gl.RGBA, _kawarp.gl.RGBA, _kawarp.gl.UNSIGNED_BYTE, _sourceCanvas);
-        _kawarp.reblurCurrentImage();
+        _sourceCtx.drawImage(img, 0, 0, _sourceCanvas.width, _sourceCanvas.height);
+        _sourceCanvas.toBlob((blob) => {
+          if (_dybg) _dybg.load(blob);
+        }, 'image/jpeg', 0.5);
       }
     } else if (typeof img === 'string') {
       try {
-        await _kawarp.loadImage(img);
+        await _dybg.load(img);
       } catch (err) {
-        console.warn("Kawarp failed to load image URL:", img, err);
+        console.warn("Dybg failed to load image URL:", img, err);
       }
-    } else {
-      _kawarp.loadImageElement(img);
+    } else if (img instanceof HTMLImageElement) {
+      _dybg.load(img);
     }
   };
 
@@ -154,39 +107,22 @@ export async function applyLegacyBackground(bgContainer, img) {
 
   if (img instanceof HTMLVideoElement) {
     const updateFrame = () => {
-      if (!_kawarp) return;
-
+      if (!_dybg) return;
       if (img.readyState >= 2 && img.videoWidth > 0 && img.videoHeight > 0) {
         if (_sourceCanvas.width !== img.videoWidth || _sourceCanvas.height !== img.videoHeight) {
           _sourceCanvas.width = img.videoWidth;
           _sourceCanvas.height = img.videoHeight;
         }
-        _sourceCtx.drawImage(
-          img,
-          0,
-          0,
-          _sourceCanvas.width,
-          _sourceCanvas.height
-        );
-        _kawarp.gl.bindTexture(_kawarp.gl.TEXTURE_2D, _kawarp.sourceTexture);
-        _kawarp.gl.texImage2D(_kawarp.gl.TEXTURE_2D, 0, _kawarp.gl.RGBA, _kawarp.gl.RGBA, _kawarp.gl.UNSIGNED_BYTE, _sourceCanvas);
-        _kawarp.reblurCurrentImage();
+        _sourceCtx.drawImage(img, 0, 0, _sourceCanvas.width, _sourceCanvas.height);
+        _sourceCanvas.toBlob((blob) => {
+          if (_dybg) _dybg.load(blob);
+        }, 'image/jpeg', 0.5);
       }
-
       _videoUpdateTimer = setTimeout(updateFrame, 100);
     };
 
     _videoUpdateTimer = setTimeout(updateFrame, 100);
   }
-
-  _resizeHandler = () => {
-    const nextAspect = window.innerWidth > 0 ? (window.innerHeight / window.innerWidth) : 0.5625;
-    canvas.width = targetWidth;
-    canvas.height = Math.max(1, Math.round(targetWidth * nextAspect));
-    _kawarp?.resize?.();
-  };
-
-  window.addEventListener("resize", _resizeHandler);
 }
 
 export function stopKawarp() {
@@ -194,21 +130,23 @@ export function stopKawarp() {
     clearTimeout(_videoUpdateTimer);
     _videoUpdateTimer = null;
   }
-  if (_kawarp) {
+  if (_dybg) {
     try {
-      _kawarp.dispose();
+      _dybg.destroy();
     } catch (e) {
-      console.warn("[Kawarp] Error disposing:", e);
+      console.warn("[Dybg] Error disposing:", e);
     }
-    _kawarp = null;
+    _dybg = null;
   }
 }
 
 export function setKawarpPlaybackState(isPlaying) {
-  if (_kawarp) {
-    _kawarp.setOptions({
-      animationSpeed: isPlaying ? 1.5 : 0.15
-    });
+  if (_dybg) {
+    if (isPlaying) {
+      _dybg.play();
+    } else {
+      _dybg.pause();
+    }
   }
 }
 

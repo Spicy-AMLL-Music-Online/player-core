@@ -334,13 +334,6 @@
     window._spicyGenerateTTML = generateTTML;
     settingsManager.apply();
 
-    player.onPlay = () => {
-      setKawarpPlaybackState(true);
-    };
-    player.onPause = () => {
-      setKawarpPlaybackState(false);
-    };
-
     const mediaSessionManager = new MediaSessionManager(
       player,
       () => { if (btnForward.onclick) btnForward.onclick(); },
@@ -759,10 +752,11 @@
 
       if (metadata.artUrl) {
         albumArt.style.backgroundImage = `url(${metadata.artUrl})`;
-        extractColors(metadata.artUrl).then(colors => {
+        extractColors(metadata.artUrl).then(async colors => {
           dynamicBg.innerHTML = '';
           dynamicBg.className = 'spicy-dynamic-bg';
-          applyLegacyBackground(dynamicBg, metadata.artUrl);
+          await applyLegacyBackground(dynamicBg, metadata.artUrl);
+          setKawarpPlaybackState(!lyricsContainer.classList.contains('hidden'));
           if (colors.vibrant) document.documentElement.style.setProperty('--ArtworkGlowColor', colors.vibrant.join(', '));
         }).catch(e => console.warn('Color extraction failed:', e));
       } else {
@@ -1377,6 +1371,8 @@
       if (lyricsIcon) {
         lyricsIcon.src = (mode === 'lyrics') ? 'icons/lyricson.png' : 'icons/lyrics.png';
       }
+
+      setKawarpPlaybackState(!isHidden);
 
       queueForceScroll();
 

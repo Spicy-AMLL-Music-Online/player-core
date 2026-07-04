@@ -140,7 +140,7 @@ function isLetterCapable(text, duration, syllableCount = 1) {
 
   if (settingsManager.get("amlLyricsAnimations")) {
     if (isRtl(text)) return false;
-    return duration > 1000 && letterLength < 7;
+    return duration > 1000 && letterLength <= 7;
   }
 
   if (isRtl(text)) return false;

@@ -120,6 +120,7 @@ let _springDelays = null;
 let _springMaxDelay = 0;
 let _springUpdateStart = 0;
 let _springUpdateEnd = 0;
+let _springW0 = SPRING_W0;
 
 function tickTy() {
   const elapsed = (performance.now() - _springStartTime) / 1000;
@@ -203,6 +204,16 @@ function setLineAnimTargets(arr, activeIndex) {
 
     line._baseY = targetTyVal;
   }
+
+  // Dynamic spring speed: faster when next line is close, slower on long gaps
+  let nextGap = 2;
+  for (let i = activeIndex + 1; i < arr.length; i++) {
+    if (!arr[i].BGLine && !arr[i].DotLine) {
+      nextGap = Math.max(0, (arr[i].StartTime - arr[activeIndex].EndTime) / 1000);
+      break;
+    }
+  }
+  _springW0 = Math.min(18, Math.max(5, 18 - nextGap * 2));
 
   // Update persistent spring state — RAF keeps running, no restart
   _springArr = arr;
@@ -441,9 +452,9 @@ function animateSyllable(position, deltaTime) {
       const curLineEnd = arr[scrollActiveIdx].EndTime;
       const nextLineStart = arr[nextIdx].StartTime;
       const gap = nextLineStart - curLineEnd;
-      if (gap > 0.5 && position > curLineEnd + gap * 0.5) {
+      if (gap > 800 && position > curLineEnd + gap * 0.2) {
         scrollIdx = nextIdx;
-      } else if (gap <= 0.5 && position > curLineEnd) {
+      } else if (gap <= 800 && position > curLineEnd) {
         scrollIdx = nextIdx;
       }
     }
@@ -1006,9 +1017,9 @@ function animateLine(position, deltaTime) {
       const curLineEnd = arr[scrollActiveIdx].EndTime;
       const nextLineStart = arr[nextIdx].StartTime;
       const gap = nextLineStart - curLineEnd;
-      if (gap > 0.5 && position > curLineEnd + gap * 0.5) {
+      if (gap > 800 && position > curLineEnd + gap * 0.2) {
         scrollIdx = nextIdx;
-      } else if (gap <= 0.5 && position > curLineEnd) {
+      } else if (gap <= 800 && position > curLineEnd) {
         scrollIdx = nextIdx;
       }
     }
