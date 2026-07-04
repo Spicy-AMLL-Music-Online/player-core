@@ -213,7 +213,7 @@ function setLineAnimTargets(arr, activeIndex) {
       break;
     }
   }
-  _springW0 = Math.min(18, Math.max(5, 18 - nextGap * 2));
+  _springW0 = Math.min(28, Math.max(3, 28 - nextGap * 5));
 
   // Update persistent spring state — RAF keeps running, no restart
   _springArr = arr;
