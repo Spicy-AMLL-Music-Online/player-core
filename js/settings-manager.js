@@ -66,6 +66,7 @@ class SettingsManager {
       hide_npv_bg: false,
       coverArtAnimation: true,
       rightAlignLyrics: false,
+      lineBlur: true,
       amlLyricsAnimations: false,
       customFontEnabled: false,
       customFont: "",

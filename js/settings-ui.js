@@ -290,6 +290,7 @@ class SettingsUI {
     this.addDropdown(lyricsStyleCard, "Meme Format Override", "Apply funny formatting to current lyrics.", "memeFormat", ["Off", "UPPERCASE", "lowercase", "Weeb (・`ω´・)", "Gibberish (Wenomechainsama)"]);
     this.addToggle(lyricsStyleCard, "Simple Lyrics Mode", "Use a lighter, simplified renderer for lyrics rendering.", "simpleLyricsMode");
     this.addToggle(lyricsStyleCard, "AML Stagger Scrolling", "Make lyric lines scroll up smoothly with staggered spacing.", "amlAnimation");
+    this.addToggle(lyricsStyleCard, "Line Blur", "Blur lines further from the active line.", "lineBlur");
 
     this.addGroup(container, "Credits & Info");
     const creditsCard = this.createCard(container);

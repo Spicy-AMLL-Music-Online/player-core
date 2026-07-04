@@ -199,8 +199,9 @@ function setLineAnimTargets(arr, activeIndex) {
         if (!arr[p].BGLine && !arr[p].DotLine) { blurDist = p - activeIndex; break; }
       }
     }
+    const lineBlurEnabled = window.spicySettingsManager?.get('lineBlur');
     const blur = blurDist === 0 ? 0 : Math.min(Math.abs(blurDist) * 2, 8);
-    el.style.setProperty('--blur-amount', isVisible ? `${blur}px` : '0px');
+    el.style.setProperty('--blur-amount', isVisible && lineBlurEnabled ? `${blur}px` : '0px');
 
     line._baseY = targetTyVal;
   }
