@@ -569,7 +569,7 @@
       if (!track.buffer && track.amTrackId) {
         showNotice('⬇️ Streaming track...');
         try {
-          const audioUrl = `https://api.spicyamll.online/download?song=${track.amTrackId}`;
+          const audioUrl = `https://spicyamllplayer-api.hf.space/download?song=${track.amTrackId}`;
           const response = await fetch(audioUrl);
           if (!response.ok) throw new Error("HTTP " + response.status);
           const buf = await response.arrayBuffer();
@@ -709,7 +709,7 @@
 
         if (!nextTrack.buffer && nextTrack.amTrackId) {
           console.log(`[Preloader] Preloading next track in queue: ${nextTrack.name}`);
-          const audioUrl = `https://api.spicyamll.online/download?song=${nextTrack.amTrackId}`;
+          const audioUrl = `https://spicyamllplayer-api.hf.space/download?song=${nextTrack.amTrackId}`;
           const response = await fetch(audioUrl);
           if (!response.ok) throw new Error("HTTP " + response.status);
           const buf = await response.arrayBuffer();
