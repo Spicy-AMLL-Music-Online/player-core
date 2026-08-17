@@ -44,14 +44,14 @@ document.addEventListener('DOMContentLoaded', () => {
     
     if (format === 'm4a') {
       // Original M4A download
-      const url = `https://api.spicyamll.online/download?song=${songId}`;
+      const url = `https://spicyamllplayer-api.hf.space/download?song=${songId}`;
       setStatus(`Starting direct M4A download for ${name || songId}...`);
       triggerDownload(url, `Song_${songId}.m4a`);
       setLoading(false);
     } else {
       // Convert to mp3/flac using our backend
       setStatus(`Requesting conversion to ${format.toUpperCase()} for ${name || songId}... this may take a moment.`);
-      const url = `https://api.spicyamll.online/convert?song=${songId}&fmt=${format}`;
+      const url = `https://spicyamllplayer-api.hf.space/convert?song=${songId}&fmt=${format}`;
       triggerDownload(url, `Song_${songId}.${format}`);
       setStatus('Conversion requested. Download will start automatically when ready.');
       setLoading(false);
@@ -73,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // If it's not a pure number, maybe it's a search term
       if (!/^\d+$/.test(query)) {
         setStatus('Searching for tracks...');
-        const searchRes = await fetch(`https://api.spicyamll.online/search?term=${encodeURIComponent(query)}&types=songs&limit=10`);
+        const searchRes = await fetch(`https://spicyamllplayer-api.hf.space/search?term=${encodeURIComponent(query)}&types=songs&limit=10`);
         if (!searchRes.ok) throw new Error('Search failed');
         const searchData = await searchRes.json();
 

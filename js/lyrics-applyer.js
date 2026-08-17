@@ -960,7 +960,7 @@ function renderCredits(data, container) {
     makerCredits.appendChild(label);
 
     const badgeContainer = document.createElement("a");
-    badgeContainer.href = `https://api.spicyamll.online/user/@${data.makerHandle}`;
+    badgeContainer.href = `https://spicyamllplayer-api.hf.space/user/@${data.makerHandle}`;
     badgeContainer.target = "_blank";
     badgeContainer.classList.add("maker-link");
     badgeContainer.style.cssText = `
@@ -1118,7 +1118,7 @@ function showUserProfileIframe(username) {
   });
 
   const iframe = document.createElement("iframe");
-  iframe.src = `https://api.spicyamll.online/user/@${username}`;
+  iframe.src = `https://spicyamllplayer-api.hf.space/user/@${username}`;
   iframe.style.cssText = `
     width: 100%;
     height: 100%;

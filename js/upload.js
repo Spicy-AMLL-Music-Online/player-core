@@ -562,7 +562,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       const songsRes = await fetch(
-        "https://api.spicyamll.online/search?term=pop&types=songs&limit=15"
+        "https://spicyamllplayer-api.hf.space/search?term=pop&types=songs&limit=15"
       );
       if (!songsRes.ok) throw new Error(`holy shit ${songsRes.status}`);
       const songsData = await songsRes.json();
@@ -571,7 +571,7 @@ document.addEventListener('DOMContentLoaded', () => {
       renderListenNow(trendingCache);
 
       const albumsRes = await fetch(
-        "https://api.spicyamll.online/search?term=2024&types=albums&limit=6"
+        "https://spicyamllplayer-api.hf.space/search?term=2024&types=albums&limit=6"
       );
       if (!albumsRes.ok) throw new Error(`holy shit ${albumsRes.status}`);
       const albumsData = await albumsRes.json();
@@ -683,7 +683,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       // const data = await itunesFetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=25`);
-      const res = await fetch(`https://api.spicyamll.online/search?term=${encodeURIComponent(query)}&types=songs&limit=25`);
+      const res = await fetch(`https://spicyamllplayer-api.hf.space/search?term=${encodeURIComponent(query)}&types=songs&limit=25`);
       const data = await res.json();
       renderSearchResults(data.results?.songs?.data?.map(mapSearchAmToItunes) || []);
     } catch (err) {
@@ -743,7 +743,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       // 1. Fetch Audio Buffer from AMLL Server (Corrected URL)
-      const audioUrl = `https://api.spicyamll.online/download?song=${song.trackId}`;
+      const audioUrl = `https://spicyamllplayer-api.hf.space/download?song=${song.trackId}`;
       const response = await robustFetch(audioUrl, { skipProxy: true });
       const audioBuffer = await response.arrayBuffer();
 
@@ -777,7 +777,7 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error("Remote load failed:", err);
       prepOverlay.classList.remove('active');
 
-      const serverUrl = `https://api.spicyamll.online/download?song=${song.trackId}`;
+      const serverUrl = `https://spicyamllplayer-api.hf.space/download?song=${song.trackId}`;
       const msg = `Failed to load track. This often happens if the server is 'sleeping'.\n\nTry clicking OK, then opening this link once to wake it up:\n${serverUrl}\n\nError: ${err.message}`;
       alert(msg);
     }
@@ -795,7 +795,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Try 1: Try Spicy AMLL backend's iTunes lookup
       try {
         console.log(`[ID Loader] Trying backend iTunes lookup for ${id}...`);
-        const res = await fetch(`https://api.spicyamll.online/itunes/lookup?id=${id}`);
+        const res = await fetch(`https://spicyamllplayer-api.hf.space/itunes/lookup?id=${id}`);
         if (res.ok) {
           const data = await res.json();
           if (data.results && data.results.length > 0) {
@@ -826,7 +826,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!song) {
         try {
           console.log(`[ID Loader] Trying Apple Music API search fallback for ${id}...`);
-          const res = await fetch(`https://api.spicyamll.online/search?term=${id}&types=songs&limit=1`);
+          const res = await fetch(`https://spicyamllplayer-api.hf.space/search?term=${id}&types=songs&limit=1`);
           if (res.ok) {
             const data = await res.json();
             const mappedResults = data.results?.songs?.data?.map(mapSearchAmToItunes) || [];
@@ -1015,7 +1015,7 @@ document.addEventListener('DOMContentLoaded', () => {
      prepOverlay.classList.add('active');
      prepStatus.textContent = "Saving to Playlist...";
      try {
-       const audioUrl = `https://api.spicyamll.online/download?song=${track.trackId}`;
+       const audioUrl = `https://spicyamllplayer-api.hf.space/download?song=${track.trackId}`;
        const response = await robustFetch(audioUrl, { skipProxy: true });
        const audioBuffer = await response.arrayBuffer();
        
@@ -1169,7 +1169,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       // const data = await itunesFetch(`https://itunes.apple.com/lookup?id=${collectionId}&entity=song`);
-      const res = await fetch(`https://api.spicyamll.online/itunes/lookup?id=${collectionId}&entity=song`);
+      const res = await fetch(`https://spicyamllplayer-api.hf.space/itunes/lookup?id=${collectionId}&entity=song`);
       const data = await res.json();
       const tracks = data.results.filter(r => r.wrapperType === 'track');
       
@@ -1215,7 +1215,7 @@ document.addEventListener('DOMContentLoaded', () => {
      let realArtistId = artistId;
      if (!realArtistId) {
         try {
-           const searchRes = await fetch(`https://api.spicyamll.online/search?term=${encodeURIComponent(artistName)}&types=artists&limit=1`);
+           const searchRes = await fetch(`https://spicyamllplayer-api.hf.space/search?term=${encodeURIComponent(artistName)}&types=artists&limit=1`);
            if (searchRes.ok) {
               const searchData = await searchRes.json();
               const foundArtist = searchData?.results?.artists?.data?.[0];
@@ -1235,13 +1235,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (realArtistId) {
           // Fetch exact songs and albums using our new logic
-          const songsRes = await fetch(`https://api.spicyamll.online/artist/songs?artist=${realArtistId}&limit=10`);
+          const songsRes = await fetch(`https://spicyamllplayer-api.hf.space/artist/songs?artist=${realArtistId}&limit=10`);
           if (songsRes.ok) {
             const songsData = await songsRes.json();
             songs = songsData.data?.map(mapSearchAmToItunes) || [];
           }
 
-          const albumsRes = await fetch(`https://api.spicyamll.online/artist/albums?artist=${realArtistId}&limit=10`);
+          const albumsRes = await fetch(`https://spicyamllplayer-api.hf.space/artist/albums?artist=${realArtistId}&limit=10`);
           if (albumsRes.ok) {
             const albumsData = await albumsRes.json();
             albums = albumsData.data?.map(mapSearchAmToItunes) || [];
@@ -1255,11 +1255,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // Fallback to fuzzy search if artistId could not be resolved or requests failed
         if (songs.length === 0) {
           console.log("[Artist View] Falling back to fuzzy iTunes search...");
-          const res = await fetch(`https://api.spicyamll.online/itunes/search?term=${encodeURIComponent(artistName)}&entity=song&limit=4`);
+          const res = await fetch(`https://spicyamllplayer-api.hf.space/itunes/search?term=${encodeURIComponent(artistName)}&entity=song&limit=4`);
           const data = await res.json();
           songs = data.results || [];
 
-          const albRes = await fetch(`https://api.spicyamll.online/itunes/search?term=${encodeURIComponent(artistName)}&entity=album&limit=10`);
+          const albRes = await fetch(`https://spicyamllplayer-api.hf.space/itunes/search?term=${encodeURIComponent(artistName)}&entity=album&limit=10`);
           const albData = await albRes.json();
           albums = albData.results || [];
           latestAlbum = albums[0];

@@ -36,7 +36,7 @@ export const TTMLDownloader = {
     // 1. Try Community DB First ( synced by users)
     try {
       console.log(`[TTMLDownloader] 🔍 Checking Community Database for: ${songId}`);
-      const communityUrl = `https://api.spicyamll.online/community/lyrics/${songId}`;
+      const communityUrl = `https://spicyamllplayer-api.hf.space/community/lyrics/${songId}`;
       const communityRes = await robustFetch(communityUrl);
       if (communityRes.ok) {
         const data = await communityRes.json();
@@ -51,7 +51,7 @@ export const TTMLDownloader = {
 
     // 2. Fallback to Apple Music API
     try {
-      const url = `https://api.spicyamll.online/lyrics?song=${songId}`;
+      const url = `https://spicyamllplayer-api.hf.space/lyrics?song=${songId}`;
       console.log(`[TTMLDownloader] 🔍 Checking Apple Music API: ${url}`);
 
       const res = await robustFetch(url, { skipProxy: true });
