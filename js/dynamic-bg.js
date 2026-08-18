@@ -72,10 +72,10 @@ export async function applyLegacyBackground(bgContainer, img) {
 
   _dybg = new Dybg({
     container: bgContainer,
-    blur: 93,
+    blur: 100,
     layers: 3,
-    speed: 1,
-    twist: 0.3,
+    speed: 0.8,
+    twist: 1,
   });
 
   if (_dybg._outCanvas) _dybg._outCanvas.style.filter = 'none';

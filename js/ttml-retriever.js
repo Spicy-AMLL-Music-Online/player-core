@@ -726,7 +726,7 @@ async function fetchFromAppleMusic(songName, artistName, albumName, durationSec 
     const data = await apiRes.json();
     console.log('[TTMLRetriever] Apple Music API Full Response:', data);
 
-    const ttmlCode = data?.raw?.data?.[0]?.attributes?.ttmlLocalizations;
+    const ttmlCode = data?.syncedLyrics;
     console.log('[TTMLRetriever] Apple Music Extracted TTML:', ttmlCode);
 
     if (!ttmlCode) {

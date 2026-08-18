@@ -42,6 +42,7 @@ export default class AudioPlayer {
     this.onEnded = null;
     this.onPlay = null;
     this.onPause = null;
+    this.onError = null;
     this.onPositionUpdate = null;
     this.onCrossfadeTrigger = null;
 
@@ -112,6 +113,13 @@ export default class AudioPlayer {
       if (this.currentChannel !== channel) return;
       this.duration = audioEl.duration * 1000;
       if (this.onLoadedMetadata) this.onLoadedMetadata(this.duration);
+    });
+
+    audioEl.addEventListener('error', () => {
+      if (this.currentChannel !== channel) return;
+      const err = audioEl.error;
+      console.error(`[AudioPlayer] Media error on channel ${channel}:`, err ? { code: err.code, message: err.message } : 'Unknown');
+      if (this.onError) this.onError(err);
     });
 
     audioEl.addEventListener('ended', () => {

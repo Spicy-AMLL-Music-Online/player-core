@@ -891,13 +891,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function isMP4Buffer(buffer) {
     const view = new DataView(buffer);
-    if (view.byteLength < 8) return false;
-    return (
-      view.getUint8(4) === 0x66 && // f
-      view.getUint8(5) === 0x74 && // t
-      view.getUint8(6) === 0x79 && // y
-      view.getUint8(7) === 0x70    // p
-    );
+    if (view.byteLength < 12) return false;
+    // Standard position: ftyp at offset 4
+    if (view.getUint8(4) === 0x66 && view.getUint8(5) === 0x74 &&
+        view.getUint8(6) === 0x79 && view.getUint8(7) === 0x70) return true;
+    // Some encoders prepend ID3v2 tags before the ftyp atom — scan first 256 bytes
+    const limit = Math.min(256, view.byteLength - 4);
+    for (let i = 4; i < limit; i++) {
+      if (view.getUint8(i) === 0x66 && view.getUint8(i+1) === 0x74 &&
+          view.getUint8(i+2) === 0x79 && view.getUint8(i+3) === 0x70) return true;
+    }
+    return false;
   }
 
   // ══════════════════════════════════════════════════

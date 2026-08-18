@@ -557,13 +557,17 @@
 
       function isMP4Buffer(buf) {
         const view = new DataView(buf);
-        if (view.byteLength < 8) return false;
-        return (
-          view.getUint8(4) === 0x66 && // f
-          view.getUint8(5) === 0x74 && // t
-          view.getUint8(6) === 0x79 && // y
-          view.getUint8(7) === 0x70    // p
-        );
+        if (view.byteLength < 12) return false;
+        // Standard position: ftyp at offset 4
+        if (view.getUint8(4) === 0x66 && view.getUint8(5) === 0x74 &&
+            view.getUint8(6) === 0x79 && view.getUint8(7) === 0x70) return true;
+        // Some encoders prepend ID3v2 tags before the ftyp atom — scan first 256 bytes
+        const limit = Math.min(256, view.byteLength - 4);
+        for (let i = 4; i < limit; i++) {
+          if (view.getUint8(i) === 0x66 && view.getUint8(i+1) === 0x74 &&
+              view.getUint8(i+2) === 0x79 && view.getUint8(i+3) === 0x70) return true;
+        }
+        return false;
       }
 
       if (!track.buffer && track.amTrackId) {
@@ -573,6 +577,14 @@
           const response = await fetch(audioUrl);
           if (!response.ok) throw new Error("HTTP " + response.status);
           const buf = await response.arrayBuffer();
+
+          // Diagnostic: log what we actually received
+          const hex = [...new Uint8Array(buf.slice(0, 32))].map(b => b.toString(16).padStart(2, '0')).join(' ');
+          const textPreview = new TextDecoder().decode(buf.slice(0, 128));
+          console.log(`[Download] ${track.amTrackId}: ${buf.byteLength} bytes, Content-Type: ${response.headers.get('content-type')}, first 32 bytes: ${hex}`);
+          if (buf.byteLength < 1000 || textPreview.includes('{') || textPreview.includes('<')) {
+            console.warn(`[Download] Suspicious content preview:`, textPreview.slice(0, 200));
+          }
 
           // Open DB and save the buffer to cache it
           const db = await new Promise((res, rej) => {
@@ -588,7 +600,15 @@
           });
 
           track.buffer = buf;
-          track.type = isMP4Buffer(buf) ? 'audio/mp4' : 'audio/mpeg';
+          // Prefer server Content-Type header over buffer sniffing for reliability
+          const serverType = (response.headers.get('content-type') || '').toLowerCase();
+          if (serverType.includes('mp4') || serverType.includes('m4a')) {
+            track.type = 'audio/mp4';
+          } else if (serverType.includes('mpeg') || serverType.includes('mp3')) {
+            track.type = 'audio/mpeg';
+          } else {
+            track.type = isMP4Buffer(buf) ? 'audio/mp4' : 'audio/mpeg';
+          }
         } catch (e) {
           console.error("Failed to stream track:", e);
           hideTrackLoader();
@@ -687,10 +707,50 @@
       };
 
       return new Promise((resolve) => {
+        let settled = false;
+
+        const cleanup = () => {
+          player.onLoadedMetadata = null;
+          player.onError = null;
+        };
+
         player.onLoadedMetadata = async (duration) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
           await processMetadata(duration);
           resolve();
         };
+
+        player.onError = (err) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          console.error('[loadTrack] Audio decode failed:', err ? { code: err.code, message: err.message } : 'Unknown error');
+          hideTrackLoader();
+          showNotice('Failed to load track. Skipping...');
+          setTimeout(() => {
+            const next = getCurrentIndex() + 1;
+            if (next < currentQueue.length) loadTrack(next);
+          }, 1500);
+          resolve();
+        };
+
+        setTimeout(() => {
+          if (!settled) {
+            settled = true;
+            cleanup();
+            console.error('[loadTrack] loadedmetadata timeout — audio element failed to decode');
+            hideTrackLoader();
+            showNotice('Track load timed out. Skipping...');
+            setTimeout(() => {
+              const next = getCurrentIndex() + 1;
+              if (next < currentQueue.length) loadTrack(next);
+            }, 1500);
+            resolve();
+          }
+        }, 15000);
+
         if (isCrossfade) {
           player.transitionTo(url, player.crossfadeDuration);
         } else {
