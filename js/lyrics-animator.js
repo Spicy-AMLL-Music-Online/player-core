@@ -373,6 +373,22 @@ const _bezOut = cubicBezier(0.3, 0.0, 0.58, 1.0);
 const _empEasing = (t) => t < 0.5 ? _bezIn(t / 0.5) : 1 - _bezOut((t - 0.5) / 0.5);
 const _empAnims = [];
 
+// AMLL matrix4 helpers — scale in matrix3d to avoid composite-add jitter
+function _createMatrix4() {
+  return [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+}
+function _scaleMatrix4(m, scale = 1, ox = 0, oy = 0) {
+  return [
+    m[0] * scale, m[1] * scale, m[2] * scale, m[3],
+    m[4] * scale, m[5] * scale, m[6] * scale, m[7],
+    m[8] * scale, m[9] * scale, m[10] * scale, m[11],
+    m[12] - ox * scale + ox, m[13] - oy * scale + oy, m[14], m[15],
+  ];
+}
+function _matrix4ToCSS(m, digits = 4) {
+  return `matrix3d(${m.map(n => n.toFixed(digits)).join(", ")})`;
+}
+
 function getAMLProgress(key, position, startTime, endTime) {
   const duration = endTime - startTime;
   if (duration <= 0) return position >= startTime ? 1 : 0;
@@ -542,9 +558,9 @@ function animateSyllable(position, deltaTime) {
         const pct = getAMLProgress(word.HTMLElement, position, word.StartTime, word.EndTime);
 
         if (!word._fadeInfo) {
-          word._fadeInfo = { w: Math.max(word.HTMLElement.offsetWidth, 1) };
+          word._fadeInfo = { w: Math.max(word.HTMLElement.offsetWidth, 1), h: Math.max(word.HTMLElement.offsetHeight, 1) };
         }
-        const fadePct = (40 / word._fadeInfo.w) * 100;
+        const fadePct = ((word._fadeInfo.h * 0.5) / word._fadeInfo.w) * 100;
         const targetGradientPos = -fadePct + (100 + fadePct) * pct;
 
         if (settingsManager.get("hardwareAccelerationHack") && !word._gpuPromoted) {
@@ -567,14 +583,47 @@ function animateSyllable(position, deltaTime) {
         setStyleIfChanged(word.HTMLElement, "--gradient-position", `${targetGradientPos.toFixed(2)}%`);
         setStyleIfChanged(word.HTMLElement, "--gradient-fade-width", `${fadePct.toFixed(2)}%`);
 
+        // AMLL initFloatAnimation — every word gently rises while being sung
+        if (word.HTMLElement && !word._floatAnim) {
+          let up = 0.05;
+          if (line.BGLine) up *= 2;
+          const fDelay = word.StartTime - line.StartTime;
+          const fDur = Math.max(1000, word.EndTime - word.StartTime);
+          const fl = word.HTMLElement.animate(
+            [
+              { transform: "translateY(0px)" },
+              { transform: `translateY(${-up}em)` },
+            ],
+            {
+              duration: Number.isFinite(fDur) ? fDur : 0,
+              delay: Number.isFinite(fDelay) ? fDelay : 0,
+              id: "float-word",
+              composite: "add",
+              fill: "both",
+              easing: "ease-out",
+            },
+          );
+          fl.pause();
+          word._floatAnim = fl;
+          _empAnims.push(fl);
+        }
+        if (word._floatAnim) {
+          const relT = Math.max(0, position - line.StartTime);
+          word._floatAnim.currentTime = relT;
+          const timing = word._floatAnim.effect?.getComputedTiming?.();
+          const fEnd = Number(timing?.delay ?? 0) + Number(timing?.duration ?? 0);
+          if (relT >= 0 && relT < fEnd) word._floatAnim.play();
+          else word._floatAnim.pause();
+        }
+
         if (word.Letters) {
           word.Letters.forEach(letter => {
             const letterPct = getAMLProgress(letter.HTMLElement, position, letter.StartTime, letter.EndTime);
 
             if (!letter._fadeInfo) {
-              letter._fadeInfo = { w: Math.max(letter.HTMLElement.offsetWidth, 1) };
+              letter._fadeInfo = { w: Math.max(letter.HTMLElement.offsetWidth, 1), h: Math.max(letter.HTMLElement.offsetHeight, 1) };
             }
-            const lFadePct = (40 / letter._fadeInfo.w) * 100;
+            const lFadePct = ((letter._fadeInfo.h * 0.5) / letter._fadeInfo.w) * 100;
             const letterGradientPos = -lFadePct + (100 + lFadePct) * letterPct;
             const letterActive = position >= letter.StartTime && position <= letter.EndTime;
             const letterSung = position > letter.EndTime;
@@ -604,94 +653,98 @@ function animateSyllable(position, deltaTime) {
         if (word.Emphasis && word.Letters) {
           const wStart = word.WordStartTime !== undefined ? word.WordStartTime : word.StartTime;
           const wEnd = word.WordEndTime !== undefined ? word.WordEndTime : word.EndTime;
-          const wordDur = Math.max(1000, wEnd - wStart);
 
           if (!word._empInit) {
             word._empInit = true;
-            let amount = wordDur / 2000;
-            amount = (amount > 1 ? Math.sqrt(amount) : amount ** 3) * 0.6;
-            amount = Math.min(1.2, amount);
-            let blur = wordDur / 3000;
-            blur = (blur > 1 ? Math.sqrt(blur) : blur ** 3) * 0.5;
-            blur = Math.min(0.8, blur);
-            const isLastWord = wi === line.Syllables.Lead.length - 1;
-            if (isLastWord) {
-              amount = Math.min(1.2, amount * 1.6);
-              blur = Math.min(0.8, blur * 1.5);
+            const de = Math.max(0, wStart - line.StartTime);
+            let du = Math.max(1000, wEnd - wStart);
+            const anchorCharCount = Math.max(1, word.WordLetterCount !== undefined ? word.WordLetterCount : word.Letters.length);
+
+            let amount = du / 2000;
+            amount = amount > 1 ? Math.sqrt(amount) : amount ** 3;
+            let blur = du / 3000;
+            blur = blur > 1 ? Math.sqrt(blur) : blur ** 3;
+            amount *= 0.6;
+            blur *= 0.5;
+            const lastWord = line.Syllables.Lead[line.Syllables.Lead.length - 1];
+            if (lastWord && word.Text && lastWord.Text.includes(word.Text)) {
+              amount *= 1.6;
+              blur *= 1.5;
+              du *= 1.2;
             }
+            amount = Math.min(1.2, amount);
+            blur = Math.min(0.8, blur);
+            const animateDu = Number.isFinite(du) ? du : 0;
 
             word.Letters.forEach((letter, li) => {
               if (!letter.Emphasis) return;
-
               const letterIndex = letter.WordLetterIndex !== undefined ? letter.WordLetterIndex : li;
-              const letterCount = letter.WordLetterCount !== undefined ? letter.WordLetterCount : word.Letters.length;
-              const anchorCount = Math.max(1, letterCount);
+              const wordDe = de + (animateDu / 2.5 / anchorCharCount) * letterIndex;
 
-              const de = letter.WordLetterIndex !== undefined ? 0 : Math.max(0, letter.StartTime - wStart);
-              const du = letter.WordLetterIndex !== undefined ? wordDur : Math.max(1000, letter.EndTime - letter.StartTime);
-              const delay = de + (du / 2.5 / anchorCount) * letterIndex;
-
-              const frames = [];
-              for (let j = 0; j < 32; j++) {
+              const frames = new Array(32).fill(0).map((_, j) => {
                 const x = (j + 1) / 32;
-                const ef = _empEasing(x);
-                const glowLevel = ef * blur;
-                const offX = -ef * 0.03 * amount * (letterCount / 2 - letterIndex);
-                const offY = -ef * 0.025 * amount;
-                frames.push({
+                const transX = _empEasing(x);
+                const glowLevel = transX * blur;
+                const m = _scaleMatrix4(_createMatrix4(), 1 + transX * 0.1 * amount);
+                const offsetX = -transX * 0.03 * amount * (anchorCharCount / 2 - letterIndex);
+                const offsetY = -transX * 0.025 * amount;
+                return {
                   offset: x,
-                  transform: `scale(${1 + ef * 0.1 * amount}) translate(${offX}em, ${offY}em)`,
+                  transform: `${_matrix4ToCSS(m)} translate(${offsetX}em, ${offsetY}em)`,
                   textShadow: `0 0 ${Math.min(0.3, blur * 0.3)}em rgba(255, 255, 255, ${glowLevel})`,
-                });
-              }
-
-              const anim = letter.HTMLElement.animate(frames, {
-                duration: wordDur,
-                delay,
-                fill: "both",
-                composite: "add",
+                };
               });
-              anim.pause();
-              _empAnims.push(anim);
-              letter._empAnim = anim;
 
-              const floatFrames = [
-                { offset: 0, transform: "translateY(0em)" },
-              ];
-              for (let j = 0; j < 32; j++) {
+              const glow = letter.HTMLElement.animate(frames, {
+                duration: animateDu,
+                delay: Number.isFinite(wordDe) ? wordDe : 0,
+                id: `emphasize-word-${letter.HTMLElement.textContent}-${letterIndex}`,
+                iterations: 1,
+                composite: "replace",
+                fill: "both",
+              });
+              glow.onfinish = () => { glow.pause(); };
+              glow.pause();
+              _empAnims.push(glow);
+              letter._empAnim = glow;
+
+              const floatFrames = new Array(32).fill(0).map((_, j) => {
                 const x = (j + 1) / 32;
-                const y = Math.sin(x * Math.PI);
-                floatFrames.push({
-                  offset: x,
-                  transform: `translateY(${-y * 0.05}em)`,
-                });
-              }
-              const floatAnim = letter.HTMLElement.animate(floatFrames, {
-                duration: wordDur * 1.4,
-                delay: delay - 400,
-                fill: "both",
-                composite: "add",
+                let y = Math.sin(x * Math.PI);
+                if (line.BGLine) y *= 2;
+                return { offset: x, transform: `translateY(${-y * 0.05}em)` };
               });
-              floatAnim.pause();
-              _empAnims.push(floatAnim);
-              letter._empFloatAnim = floatAnim;
-              letter._empFloatEnd = (delay - 400) + wordDur * 1.4;
+              const float = letter.HTMLElement.animate(floatFrames, {
+                duration: animateDu * 1.4,
+                delay: Number.isFinite(wordDe) ? wordDe - 400 : 0,
+                id: "emphasize-word-float",
+                iterations: 1,
+                composite: "add",
+                fill: "both",
+              });
+              float.onfinish = () => { float.pause(); };
+              float.pause();
+              _empAnims.push(float);
+              letter._empFloatAnim = float;
             });
           }
 
+          // AMLL enable(): scrub by line-relative time, play inside [delay, delay+duration]
+          const relT = Math.max(0, position - line.StartTime);
+          const empAnims = [];
           word.Letters.forEach(letter => {
-            const t = Math.max(0, position - wStart);
-            if (letter._empAnim) {
-              letter._empAnim.currentTime = t;
-              if (t > 0 && t < wEnd - wStart) letter._empAnim.play();
-              else letter._empAnim.pause();
-            }
-            if (letter._empFloatAnim) {
-              letter._empFloatAnim.currentTime = t;
-              if (t > 0 && t < letter._empFloatEnd) letter._empFloatAnim.play();
-              else letter._empFloatAnim.pause();
-            }
+            if (letter._empAnim) empAnims.push(letter._empAnim);
+            if (letter._empFloatAnim) empAnims.push(letter._empFloatAnim);
           });
+          for (const a of empAnims) {
+            a.currentTime = relT;
+            a.playbackRate = 1;
+            const timing = a.effect?.getComputedTiming?.();
+            const duration = Number(timing?.duration ?? 0);
+            const delay = Number(timing?.delay ?? 0);
+            if (relT >= 0 && relT < delay + duration) a.play();
+            else a.pause();
+          }
         }
 
         continue;

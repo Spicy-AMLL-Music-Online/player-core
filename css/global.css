@@ -18,6 +18,46 @@
 }
 
 @font-face {
+  font-family: 'SF Pro Display';
+  src: url('../fonts/sfpro-display-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SF Pro Display';
+  src: url('../fonts/sfpro-display-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SF Pro Display';
+  src: url('../fonts/sfpro-display-Semibold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SF Pro Display';
+  src: url('../fonts/sfpro-display-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SF Pro Display';
+  src: url('../fonts/sfpro-display-Heavy.woff2') format('woff2');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
   font-family: 'SF Arabic';
   src: url('../fonts/sfarabic.woff2') format('woff2'),
     url('../fonts/sfarabic.ttf') format('truetype');
@@ -50,7 +90,7 @@ body {
   padding: 0;
   background: #000000;
   color: #ffffff;
-  font-family: 'SF Pro', 'SF Arabic', Inter, "Noto Sans Georgian", "Vazirmatn", sans-serif;
+font-family: 'SF Pro Display', 'SF Pro', 'PingFang SC', 'Hiragino Sans', 'SF Arabic', Inter, "Noto Sans Georgian", "Vazirmatn", sans-serif;
 
   font-weight: 700;
   overflow: hidden;
@@ -114,7 +154,7 @@ input {
   --LyricsRightSidePadding: 6cqw;
 
   /* Font */
-  --spicy-font-family: 'SF Pro', 'SF Arabic', Inter, "Noto Sans Georgian", "Vazirmatn", sans-serif;
+  --spicy-font-family: 'SF Pro Display', 'SF Pro', 'PingFang SC', 'Hiragino Sans', 'SF Arabic', Inter, "Noto Sans Georgian", "Vazirmatn", sans-serif;
 
   /* Default font size for content */
   --default-font-size: clamp(0.5rem, calc(1cqw * 3), 2.4rem);

@@ -150,7 +150,8 @@
   --Vocal-Sung-opacity: 0.497;
   --Vocal-Hover-opacity: 1;
   --gradient-degrees: 180deg !important;
-  --gradient-alpha-end: 0.35 !important;
+  --gradient-alpha: 1 !important;
+  --gradient-alpha-end: 0.4 !important;
   letter-spacing: 0;
   --lyrics-line-height: 1.1818181818;
   line-height: var(--lyrics-line-height) !important;
