@@ -1,122 +1,199 @@
 /**
- * Spicy AMLL Player WEB — Analytic Spring Physics
- * Based on @spikerko/web-modules/Spring (analytic harmonic oscillator solution)
- * This is significantly more stable than Euler integration at variable frame rates.
+ * Spicy AMLL Player — Spring Physics Solver
+ * Direct port of AMLL (amll-dev/applemusic-like-lyrics) utils/spring.ts
+ * Uses pushkine/spring analytical harmonic oscillator solver with delay queue & derivative velocity tracking.
  */
 
-const pi = Math.PI;
-const tau = pi * 2;
-const exp = Math.exp;
-const sin = Math.sin;
-const cos = Math.cos;
-const sqrt = Math.sqrt;
+function derivative(f) {
+  const h = 0.001;
+  return (x) => (f(x + h) - f(x - h)) / (2 * h);
+}
 
-const EPS = 1e-5;
-const SLEEP_OFFSET_SQ_LIMIT = (1 / 3840) ** 2;
-const SLEEP_VELOCITY_SQ_LIMIT = 1e-2 ** 2;
+function getVelocity(f) {
+  return derivative(f);
+}
+
+function solveSpring(from, velocity, to, delay = 0, params) {
+  const soft = params?.soft ?? false;
+  const stiffness = params?.stiffness ?? 100;
+  const damping = params?.damping ?? 10;
+  const mass = params?.mass ?? 1;
+  const delta = to - from;
+
+  if (soft || 1.0 <= damping / (2.0 * Math.sqrt(stiffness * mass))) {
+    const angular_frequency = -Math.sqrt(stiffness / mass);
+    const leftover = -angular_frequency * delta - velocity;
+    return (t) => {
+      t -= delay;
+      if (t < 0) return from;
+      return to - (delta + t * leftover) * Math.exp(t * angular_frequency);
+    };
+  }
+
+  const damping_frequency = Math.sqrt(4.0 * mass * stiffness - damping ** 2.0);
+  const leftover = (damping * delta - 2.0 * mass * velocity) / damping_frequency;
+  const dfm = (0.5 * damping_frequency) / mass;
+  const dm = -(0.5 * damping) / mass;
+
+  return (t) => {
+    t -= delay;
+    if (t < 0) return from;
+    return (
+      to -
+      (Math.cos(t * dfm) * delta + Math.sin(t * dfm) * leftover) *
+        Math.exp(t * dm)
+    );
+  };
+}
 
 export default class Spring {
-  constructor(startPosition, frequency = 1, dampingRatio = 0.5, goal = startPosition) {
-    if (frequency * dampingRatio < 0) {
-      throw new Error("Spring will not converge");
+  constructor(currentPosition = 0, stiffness = 100, damping = 10, mass = 1) {
+    this.targetPosition = currentPosition;
+    this.currentPosition = currentPosition;
+    this.currentTime = 0;
+    this.params = { stiffness, damping, mass };
+    this.currentSolver = () => this.targetPosition;
+    this.getV = () => 0;
+    this.getV2 = () => 0;
+    this.queueParams = undefined;
+    this.queuePosition = undefined;
+  }
+
+  get position() {
+    return this.currentPosition;
+  }
+
+  set position(v) {
+    this.setPosition(v);
+  }
+
+  get velocity() {
+    return this.getV(this.currentTime);
+  }
+
+  get goal() {
+    return this.targetPosition;
+  }
+
+  set goal(v) {
+    this.setTargetPosition(v, 0);
+  }
+
+  resetSolver() {
+    const curV = this.getV(this.currentTime);
+    this.currentTime = 0;
+    this.currentSolver = solveSpring(
+      this.currentPosition,
+      curV,
+      this.targetPosition,
+      0,
+      this.params
+    );
+    this.getV = getVelocity(this.currentSolver);
+    this.getV2 = getVelocity(this.getV);
+  }
+
+  arrived() {
+    return (
+      Math.abs(this.targetPosition - this.currentPosition) < 0.01 &&
+      Math.abs(this.getV(this.currentTime)) < 0.01 &&
+      Math.abs(this.getV2(this.currentTime)) < 0.01 &&
+      this.queueParams === undefined &&
+      this.queuePosition === undefined
+    );
+  }
+
+  setPosition(targetPosition) {
+    this.targetPosition = targetPosition;
+    this.currentPosition = targetPosition;
+    this.currentSolver = () => this.targetPosition;
+    this.getV = () => 0;
+    this.getV2 = () => 0;
+    this.queuePosition = undefined;
+    this.queueParams = undefined;
+  }
+
+  updateParams(params, delaySecs = 0) {
+    if (delaySecs > 0) {
+      this.queueParams = {
+        ...(this.queueParams ?? {}),
+        ...params,
+        time: delaySecs,
+      };
+    } else {
+      this.queueParams = undefined;
+      this.params = {
+        ...this.params,
+        ...params,
+      };
+      this.resetSolver();
+    }
+  }
+
+  setTargetPosition(targetPosition, delaySecs = 0) {
+    if (
+      delaySecs <= 0 &&
+      Math.abs(this.targetPosition - targetPosition) < 0.001
+    ) {
+      this.queuePosition = undefined;
+      return;
     }
 
-    this.dampingRatio = dampingRatio;
-    this.frequency = frequency;
-    this.goal = goal;
-    this.position = startPosition;
-    this.velocity = 0;
-  }
-
-  // Alias for legacy code compatibility
-  get value() {
-    return this.position;
-  }
-
-  set value(v) {
-    this.position = v;
+    if (delaySecs > 0) {
+      this.queuePosition = {
+        position: targetPosition,
+        time: delaySecs,
+      };
+    } else {
+      this.queuePosition = undefined;
+      this.targetPosition = targetPosition;
+      this.resetSolver();
+    }
   }
 
   SetGoal(goal, immediate = false) {
-    this.goal = goal;
     if (immediate) {
-      this.position = goal;
-      this.velocity = 0;
+      this.setPosition(goal);
+    } else {
+      this.setTargetPosition(goal, 0);
     }
   }
 
-  Step(deltaTime) {
-    if (deltaTime <= 0) return this.position;
+  update(dtSecs = 0) {
+    if (dtSecs <= 0) return this.currentPosition;
+    this.currentTime += dtSecs;
+    this.currentPosition = this.currentSolver(this.currentTime);
 
-    // Cap deltaTime to avoid instability on very long frames
-    const dt = Math.min(deltaTime, 0.1);
-
-    const d = this.dampingRatio;
-    const f = this.frequency * tau; // Hz -> Rad/s
-    const g = this.goal;
-    const p = this.position;
-    const v = this.velocity;
-
-    if (d === 1) { // Critically damped
-      const q = exp(-f * dt);
-      const w = dt * q;
-      const wScaledFrequency = w * f;
-      const c0 = q + wScaledFrequency;
-      const c2 = q - wScaledFrequency;
-      const c3 = w * (f ** 2);
-      const dist = p - g;
-
-      this.position = dist * c0 + v * w + g;
-      this.velocity = v * c2 - dist * c3;
-    } else if (d < 1) { // Underdamped
-      const fStep = f * dt;
-      const q = exp(-d * fStep);
-      const c = sqrt(1 - d ** 2);
-      const cFStep = c * fStep;
-      const cosVal = cos(cFStep);
-      const sinVal = sin(cFStep);
-
-      let z;
-      if (c > EPS) {
-        z = sinVal / c;
-      } else {
-        const c2 = c ** 2;
-        z = fStep + (((fStep ** 2 * c2 * c2 / 20 - c2) * fStep ** 3) / 6);
+    if (this.queueParams) {
+      this.queueParams.time -= dtSecs;
+      if (this.queueParams.time <= 0) {
+        const qp = { ...this.queueParams };
+        this.queueParams = undefined;
+        this.updateParams(qp, 0);
       }
-
-      let y;
-      const cF = f * c;
-      if (cF > EPS) {
-        y = sinVal / cF;
-      } else {
-        const cF2 = cF ** 2;
-        y = dt + (((dt ** 2 * cF2 * cF2 / 20 - cF2) * dt ** 3) / 6);
-      }
-
-      const dist = p - g;
-      this.position = (dist * (cosVal + z * d) + v * y) * q + g;
-      this.velocity = (v * (cosVal - z * d) - dist * (z * f)) * q;
-    } else { // Overdamped
-      const c = sqrt(d ** 2 - 1);
-      const r1 = -f * (d - c);
-      const r2 = -f * (d + c);
-      const ec1 = exp(r1 * dt);
-      const ec2 = exp(r2 * dt);
-      const dist = p - g;
-      const co2 = (v - dist * r1) / (2 * f * c);
-      const co1 = ec1 * (dist - co2);
-      const coEc2 = co2 * ec2;
-
-      this.position = co1 + coEc2 + g;
-      this.velocity = co1 * r1 + coEc2 * r2;
     }
 
-    // Settle logic
-    if (Math.abs(this.velocity) < 1e-4 && Math.abs(this.position - this.goal) < 1e-4) {
-      this.position = this.goal;
-      this.velocity = 0;
+    if (this.queuePosition) {
+      this.queuePosition.time -= dtSecs;
+      if (this.queuePosition.time <= 0) {
+        const target = this.queuePosition.position;
+        this.queuePosition = undefined;
+        this.setTargetPosition(target, 0);
+      }
     }
 
-    return this.position;
+    if (this.arrived()) {
+      this.setPosition(this.targetPosition);
+    }
+
+    return this.currentPosition;
+  }
+
+  Step(dtSecs) {
+    return this.update(dtSecs);
+  }
+
+  getCurrentPosition() {
+    return this.currentPosition;
   }
 }

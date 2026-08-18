@@ -97,58 +97,85 @@ const SimpleLyricsMode_LetterEffectsStrengthConfig = {
 };
 
 let _activeLineIndex = -1;
-let _tyRafId = null;
 
-// specs.swift: mass=1, stiffness=100, damping=18
-const SPRING_W0 = 10;
-const SPRING_ZETA = 0.9;
+// ── AMLL Spring Policy Constants (from base/spring.ts) ──
+const SLOW_STIFFNESS = 90;
+const SLOW_DAMPING = 15;
+const MIN_INTERVAL = 100;
+const MAX_INTERVAL = 800;
+const MIN_STIFFNESS = 170;
+const MAX_STIFFNESS = 220;
+const DAMPING_MULTIPLIER = 2.2;
+const INTERVAL_EXPONENT = 0.2;
 
-function springPos(t, start, end, w0 = SPRING_W0, zeta = SPRING_ZETA) {
-  const wd = w0 * Math.sqrt(1 - zeta * zeta);
-  const decay = Math.exp(-zeta * w0 * t);
-  const cosTerm = Math.cos(wd * t);
-  const sinTerm = (zeta / Math.sqrt(1 - zeta * zeta)) * Math.sin(wd * t);
-  return end + (start - end) * decay * (cosTerm + sinTerm);
+/**
+ * Direct port of AMLL base/spring.ts getPosYSpringPolicy.
+ */
+function getPosYSpringPolicy(isSeeking, isInterludeActive, intervalMs) {
+  if (isSeeking || isInterludeActive || intervalMs == null) {
+    return {
+      mass: 0.9,
+      stiffness: SLOW_STIFFNESS,
+      damping: SLOW_DAMPING,
+    };
+  }
+
+  const clampedInterval = Math.min(Math.max(intervalMs, MIN_INTERVAL), MAX_INTERVAL);
+  let ratio = 1 - (clampedInterval - MIN_INTERVAL) / (MAX_INTERVAL - MIN_INTERVAL);
+  ratio = ratio ** INTERVAL_EXPONENT;
+
+  const targetStiffness = MIN_STIFFNESS + ratio * (MAX_STIFFNESS - MIN_STIFFNESS);
+  const targetDamping = Math.sqrt(targetStiffness) * DAMPING_MULTIPLIER;
+
+  return {
+    mass: 0.9,
+    stiffness: targetStiffness,
+    damping: targetDamping,
+  };
 }
 
-// Persistent spring state — RAF never restarts, just updates targets
-let _springArr = null;
-let _springStartTy = 0;
-let _springEndTy = 0;
-let _springStartTime = 0;
-let _springDelays = null;
-let _springMaxDelay = 0;
-let _springUpdateStart = 0;
-let _springUpdateEnd = 0;
-let _springW0 = SPRING_W0;
+// ── Per-Line Spring RAF State ──
+let _perLineArr = null;
+let _perLineRafId = null;
+let _perLineLastTime = 0;
 
-function tickTy() {
-  const elapsed = (performance.now() - _springStartTime) / 1000;
-  const arr = _springArr;
-  if (!arr) { _tyRafId = null; return; }
+/**
+ * Per-line spring RAF tick (port of AMLL DomLyricPlayer update loop).
+ */
+function tickPerLineY(now) {
+  const dt = Math.min((now - _perLineLastTime) / 1000, 0.1);
+  _perLineLastTime = now;
 
-  for (let i = _springUpdateStart; i < _springUpdateEnd; i++) {
-    const el = arr[i]?.HTMLElement;
-    if (!el) continue;
-    const d = _springDelays?.[i];
-    if (d === undefined) continue;
-    const lineT = elapsed - d;
-    const ty = lineT <= 0 ? _springStartTy : springPos(lineT, _springStartTy, _springEndTy);
-    el.style.setProperty('--ty', `${ty}px`);
-  }
+  const arr = _perLineArr;
+  if (!arr) { _perLineRafId = null; return; }
 
-  // Check if spring settled within 0.5px
-  const slowestT = elapsed - _springMaxDelay;
-  if (elapsed > 10 || (slowestT > 0 && Math.abs(springPos(slowestT, _springStartTy, _springEndTy) - _springEndTy) < 0.5)) {
-    for (let i = 0; i < arr.length; i++) {
-      const el = arr[i]?.HTMLElement;
-      if (el) el.style.setProperty('--ty', `${_springEndTy}px`);
+  let anyActive = false;
+
+  for (let i = 0; i < arr.length; i++) {
+    const line = arr[i];
+    const spring = line._posYSpring;
+    if (!spring) continue;
+
+    spring.update(dt);
+    const el = line.HTMLElement;
+    if (el) el.style.setProperty('--ty', `${spring.getCurrentPosition().toFixed(1)}px`);
+
+    if (!spring.arrived()) {
+      anyActive = true;
     }
-    _tyRafId = null;
-    return;
   }
 
-  _tyRafId = requestAnimationFrame(tickTy);
+  if (anyActive) {
+    _perLineRafId = requestAnimationFrame(tickPerLineY);
+  } else {
+    for (let i = 0; i < arr.length; i++) {
+      const line = arr[i];
+      if (line._posYSpring && line.HTMLElement) {
+        line.HTMLElement.style.setProperty('--ty', `${line._posYSpring.getCurrentPosition().toFixed(1)}px`);
+      }
+    }
+    _perLineRafId = null;
+  }
 }
 
 function setLineAnimTargets(arr, activeIndex) {
@@ -162,22 +189,45 @@ function setLineAnimTargets(arr, activeIndex) {
   if (!activeEl) return;
 
   const containerHeight = scrollContainer.clientHeight;
-  const lineHeight = activeEl.offsetHeight;
 
-  const currentTyVal = parseFloat(getComputedStyle(activeEl).getPropertyValue('--ty')) || 0;
+  // Compute target --ty: offset that positions the active line at alignPosition (0.31 desktop / 0.13 mobile)
+  const currentTy = parseFloat(activeEl.style.getPropertyValue('--ty')) || 0;
   const elementRect = activeEl.getBoundingClientRect();
   const containerRect = scrollContainer.getBoundingClientRect();
-  const naturalLineTop = elementRect.top - containerRect.top - currentTyVal;
+  const naturalLineTop = elementRect.top - containerRect.top - currentTy;
+  const targetTy = (containerHeight * (checkIsMobile() ? 0.13 : 0.31)) - naturalLineTop;
 
-  const targetTyVal = (containerHeight * (checkIsMobile() ? 0.13 : 0.31)) - naturalLineTop;
+  // Detect seek / interlude
+  const isSeeking =
+    lastActiveLineIdx !== null &&
+    lastActiveLineIdx !== undefined &&
+    Math.abs(activeIndex - lastActiveLineIdx) > 1;
+  const isInterludeActive = !!arr[activeIndex]?.DotLine;
 
-  const lineTotal = lineHeight + 25;
+  // Find interval between current and previous line
+  let intervalMs;
+  if (activeIndex > 0) {
+    const curGroup = arr[activeIndex];
+    const prevGroup = arr[activeIndex - 1];
+    if (curGroup && prevGroup && curGroup.StartTime && prevGroup.StartTime) {
+      intervalMs = Math.max(0, curGroup.StartTime - prevGroup.StartTime);
+    }
+  }
+
+  // Calculate AMLL spring policy
+  const springPolicy = getPosYSpringPolicy(isSeeking, isInterludeActive, intervalMs);
+
+  // Visible window for blur computation
+  const lineTotal = (activeEl.offsetHeight || 60) + 25;
   const visibleRange = Math.ceil(containerHeight / lineTotal) + 3;
-  const firstVisible = Math.max(0, activeIndex - visibleRange);
 
-  // Build per-line delays and set stagger/blur immediately (CSS transitions handle those)
-  const delays = new Array(arr.length);
-  let maxDelay = 0;
+  // Stagger calculation matching AMLL base/index.ts lines 811-840
+  let delay = 0; // seconds
+  let baseDelay = 0.05; // Always keep stagger active during playback!
+
+  const activeOffsetTop = activeEl.offsetTop;
+  const targetFocalTop = containerHeight * (checkIsMobile() ? 0.13 : 0.31);
+
   for (let i = 0; i < arr.length; i++) {
     const line = arr[i];
     const el = line.HTMLElement;
@@ -185,15 +235,30 @@ function setLineAnimTargets(arr, activeIndex) {
 
     line._lineIndex = i;
 
+    // Lazily create or update this line's individual Spring
+    if (!line._posYSpring) {
+      const currentY = parseFloat(el.style.getPropertyValue('--ty')) || 0;
+      line._posYSpring = new Spring(currentY, springPolicy.stiffness, springPolicy.damping, springPolicy.mass);
+    }
+
+    line._posYSpring.updateParams(springPolicy);
+    line._posYSpring.setTargetPosition(targetTy, delay);
+
+    // AMLL stagger delay step: ONLY accumulate delay for lines visible on-screen (AMLL line 835)
+    const lineH = el.offsetHeight || 60;
+    const curPos = targetFocalTop + (el.offsetTop - activeOffsetTop);
+
+    if (curPos + lineH >= 0) {
+      delay += baseDelay;
+      if (i >= activeIndex) {
+        baseDelay *= (1 / 1.05);
+      }
+    }
+
+    // Blur amount
     const distFromActive = Math.abs(i - activeIndex);
     const isVisible = distFromActive <= visibleRange;
-    const delay = isVisible ? 0.10 + (i - firstVisible) * 0.05 : 0;
-    delays[i] = delay;
-    if (delay > maxDelay) maxDelay = delay;
-    el.style.setProperty('--stagger-delay', `${delay}s`);
-
-    const dist = i - activeIndex;
-    let blurDist = dist;
+    let blurDist = i - activeIndex;
     if (line.BGLine || line.DotLine) {
       for (let p = i - 1; p >= 0; p--) {
         if (!arr[p].BGLine && !arr[p].DotLine) { blurDist = p - activeIndex; break; }
@@ -203,31 +268,14 @@ function setLineAnimTargets(arr, activeIndex) {
     const blur = blurDist === 0 ? 0 : Math.min(Math.abs(blurDist) * 2, 8);
     el.style.setProperty('--blur-amount', isVisible && lineBlurEnabled ? `${blur}px` : '0px');
 
-    line._baseY = targetTyVal;
+    line._baseY = targetTy;
   }
 
-  // Dynamic spring speed: faster when next line is close, slower on long gaps
-  let nextGap = 2;
-  for (let i = activeIndex + 1; i < arr.length; i++) {
-    if (!arr[i].BGLine && !arr[i].DotLine) {
-      nextGap = Math.max(0, (arr[i].StartTime - arr[activeIndex].EndTime) / 1000);
-      break;
-    }
-  }
-  _springW0 = Math.min(28, Math.max(3, 28 - nextGap * 5));
-
-  // Update persistent spring state — RAF keeps running, no restart
-  _springArr = arr;
-  _springStartTy = currentTyVal;
-  _springEndTy = targetTyVal;
-  _springStartTime = performance.now();
-  _springDelays = delays;
-  _springMaxDelay = maxDelay;
-  _springUpdateStart = Math.max(0, firstVisible);
-  _springUpdateEnd = Math.min(arr.length, firstVisible + visibleRange * 2 + 5);
-
-  if (!_tyRafId) {
-    _tyRafId = requestAnimationFrame(tickTy);
+  // Start (or continue) the per-line spring RAF
+  _perLineArr = arr;
+  if (!_perLineRafId) {
+    _perLineLastTime = performance.now();
+    _perLineRafId = requestAnimationFrame(tickPerLineY);
   }
 }
 
@@ -488,17 +536,19 @@ function animateSyllable(position, deltaTime) {
   const startIdx = Math.max(0, searchIdx - offsetSearch);
   const endIdx = Math.min(arr.length, searchIdx + offsetSearch + (checkIsMobile() ? 3 : 5));
 
-  // If user is scrolling, cancel any ongoing --ty stagger animation
+  // If user is scrolling, stop per-line springs and clear transforms
   if (isUserScrolling()) {
-    if (_tyRafId) { cancelAnimationFrame(_tyRafId); _tyRafId = null; }
+    if (_perLineRafId) { cancelAnimationFrame(_perLineRafId); _perLineRafId = null; }
     for (const line of arr) {
       const el = line.HTMLElement;
-      if (el && el.style.getPropertyValue('--ty')) {
+      if (el) {
         el.style.removeProperty('--ty');
         el.style.removeProperty('--stagger-delay');
         el.style.removeProperty('--blur-amount');
-        line._baseY = 0;
       }
+      line._posYSpring = null;
+      line._staggerRemaining = 0;
+      line._baseY = 0;
     }
   }
 
@@ -653,98 +703,94 @@ function animateSyllable(position, deltaTime) {
         if (word.Emphasis && word.Letters) {
           const wStart = word.WordStartTime !== undefined ? word.WordStartTime : word.StartTime;
           const wEnd = word.WordEndTime !== undefined ? word.WordEndTime : word.EndTime;
+          const wordDur = Math.max(1000, wEnd - wStart);
 
           if (!word._empInit) {
             word._empInit = true;
-            const de = Math.max(0, wStart - line.StartTime);
-            let du = Math.max(1000, wEnd - wStart);
-            const anchorCharCount = Math.max(1, word.WordLetterCount !== undefined ? word.WordLetterCount : word.Letters.length);
-
-            let amount = du / 2000;
-            amount = amount > 1 ? Math.sqrt(amount) : amount ** 3;
-            let blur = du / 3000;
-            blur = blur > 1 ? Math.sqrt(blur) : blur ** 3;
-            amount *= 0.6;
-            blur *= 0.5;
-            const lastWord = line.Syllables.Lead[line.Syllables.Lead.length - 1];
-            if (lastWord && word.Text && lastWord.Text.includes(word.Text)) {
-              amount *= 1.6;
-              blur *= 1.5;
-              du *= 1.2;
-            }
+            let amount = wordDur / 2000;
+            amount = (amount > 1 ? Math.sqrt(amount) : amount ** 3) * 0.6;
             amount = Math.min(1.2, amount);
+            let blur = wordDur / 3000;
+            blur = (blur > 1 ? Math.sqrt(blur) : blur ** 3) * 0.5;
             blur = Math.min(0.8, blur);
-            const animateDu = Number.isFinite(du) ? du : 0;
+            const isLastWord = wi === line.Syllables.Lead.length - 1;
+            if (isLastWord) {
+              amount = Math.min(1.2, amount * 1.6);
+              blur = Math.min(0.8, blur * 1.5);
+            }
 
             word.Letters.forEach((letter, li) => {
               if (!letter.Emphasis) return;
+
               const letterIndex = letter.WordLetterIndex !== undefined ? letter.WordLetterIndex : li;
-              const wordDe = de + (animateDu / 2.5 / anchorCharCount) * letterIndex;
+              const letterCount = letter.WordLetterCount !== undefined ? letter.WordLetterCount : word.Letters.length;
+              const anchorCount = Math.max(1, letterCount);
 
-              const frames = new Array(32).fill(0).map((_, j) => {
+              const de = letter.WordLetterIndex !== undefined ? 0 : Math.max(0, letter.StartTime - wStart);
+              const du = letter.WordLetterIndex !== undefined ? wordDur : Math.max(1000, letter.EndTime - letter.StartTime);
+              const delay = de + (du / 2.5 / anchorCount) * letterIndex;
+
+              const frames = [];
+              for (let j = 0; j < 32; j++) {
                 const x = (j + 1) / 32;
-                const transX = _empEasing(x);
-                const glowLevel = transX * blur;
-                const m = _scaleMatrix4(_createMatrix4(), 1 + transX * 0.1 * amount);
-                const offsetX = -transX * 0.03 * amount * (anchorCharCount / 2 - letterIndex);
-                const offsetY = -transX * 0.025 * amount;
-                return {
+                const ef = _empEasing(x);
+                const glowLevel = ef * blur;
+                const offX = -ef * 0.03 * amount * (letterCount / 2 - letterIndex);
+                const offY = -ef * 0.025 * amount;
+                frames.push({
                   offset: x,
-                  transform: `${_matrix4ToCSS(m)} translate(${offsetX}em, ${offsetY}em)`,
+                  transform: `scale(${1 + ef * 0.1 * amount}) translate(${offX}em, ${offY}em)`,
                   textShadow: `0 0 ${Math.min(0.3, blur * 0.3)}em rgba(255, 255, 255, ${glowLevel})`,
-                };
-              });
+                });
+              }
 
-              const glow = letter.HTMLElement.animate(frames, {
-                duration: animateDu,
-                delay: Number.isFinite(wordDe) ? wordDe : 0,
-                id: `emphasize-word-${letter.HTMLElement.textContent}-${letterIndex}`,
-                iterations: 1,
-                composite: "replace",
+              const anim = letter.HTMLElement.animate(frames, {
+                duration: wordDur,
+                delay,
                 fill: "both",
-              });
-              glow.onfinish = () => { glow.pause(); };
-              glow.pause();
-              _empAnims.push(glow);
-              letter._empAnim = glow;
-
-              const floatFrames = new Array(32).fill(0).map((_, j) => {
-                const x = (j + 1) / 32;
-                let y = Math.sin(x * Math.PI);
-                if (line.BGLine) y *= 2;
-                return { offset: x, transform: `translateY(${-y * 0.05}em)` };
-              });
-              const float = letter.HTMLElement.animate(floatFrames, {
-                duration: animateDu * 1.4,
-                delay: Number.isFinite(wordDe) ? wordDe - 400 : 0,
-                id: "emphasize-word-float",
-                iterations: 1,
                 composite: "add",
-                fill: "both",
               });
-              float.onfinish = () => { float.pause(); };
-              float.pause();
-              _empAnims.push(float);
-              letter._empFloatAnim = float;
+              anim.pause();
+              _empAnims.push(anim);
+              letter._empAnim = anim;
+
+              const floatFrames = [
+                { offset: 0, transform: "translateY(0em)" },
+              ];
+              for (let j = 0; j < 32; j++) {
+                const x = (j + 1) / 32;
+                const y = Math.sin(x * Math.PI);
+                floatFrames.push({
+                  offset: x,
+                  transform: `translateY(${-y * 0.05}em)`,
+                });
+              }
+              const floatAnim = letter.HTMLElement.animate(floatFrames, {
+                duration: wordDur * 1.4,
+                delay: delay - 400,
+                fill: "both",
+                composite: "add",
+              });
+              floatAnim.pause();
+              _empAnims.push(floatAnim);
+              letter._empFloatAnim = floatAnim;
+              letter._empFloatEnd = (delay - 400) + wordDur * 1.4;
             });
           }
 
-          // AMLL enable(): scrub by line-relative time, play inside [delay, delay+duration]
-          const relT = Math.max(0, position - line.StartTime);
-          const empAnims = [];
           word.Letters.forEach(letter => {
-            if (letter._empAnim) empAnims.push(letter._empAnim);
-            if (letter._empFloatAnim) empAnims.push(letter._empFloatAnim);
+            const t = Math.max(0, position - wStart);
+            if (letter._empAnim) {
+              letter._empAnim.currentTime = t;
+              if (t > 0 && t < wEnd - wStart) letter._empAnim.play();
+              else letter._empAnim.pause();
+            }
+            if (letter._empFloatAnim) {
+              letter._empFloatAnim.currentTime = t;
+              if (t > 0 && t < letter._empFloatEnd) letter._empFloatAnim.play();
+              else letter._empFloatAnim.pause();
+            }
           });
-          for (const a of empAnims) {
-            a.currentTime = relT;
-            a.playbackRate = 1;
-            const timing = a.effect?.getComputedTiming?.();
-            const duration = Number(timing?.duration ?? 0);
-            const delay = Number(timing?.delay ?? 0);
-            if (relT >= 0 && relT < delay + duration) a.play();
-            else a.pause();
-          }
         }
 
         continue;
@@ -1099,17 +1145,19 @@ function animateLine(position, deltaTime) {
     }
   }
 
-  // If user is scrolling, cancel any ongoing --ty stagger animation
+  // If user is scrolling, stop per-line springs and clear transforms
   if (isUserScrolling()) {
-    if (_tyRafId) { cancelAnimationFrame(_tyRafId); _tyRafId = null; }
+    if (_perLineRafId) { cancelAnimationFrame(_perLineRafId); _perLineRafId = null; }
     for (const line of arr) {
       const el = line.HTMLElement;
-      if (el && el.style.getPropertyValue('--ty')) {
+      if (el) {
         el.style.removeProperty('--ty');
         el.style.removeProperty('--stagger-delay');
         el.style.removeProperty('--blur-amount');
-        line._baseY = 0;
       }
+      line._posYSpring = null;
+      line._staggerRemaining = 0;
+      line._baseY = 0;
     }
   }
 
@@ -1256,7 +1304,9 @@ export function resetAnimator() {
   blurringLastLine = null;
   lastFrameTime = performance.now();
   _styleCache = new WeakMap();
-  if (_tyRafId) { cancelAnimationFrame(_tyRafId); _tyRafId = null; }
+  // Cancel the per-line spring RAF and discard all line spring state
+  if (_perLineRafId) { cancelAnimationFrame(_perLineRafId); _perLineRafId = null; }
+  _perLineArr = null;
   _empAnims.forEach(a => a.cancel());
   _empAnims.length = 0;
 }
