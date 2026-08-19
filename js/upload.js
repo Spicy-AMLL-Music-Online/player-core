@@ -1,10 +1,11 @@
-import { addTrackToQueue, clearQueue, setCurrentIndex, getPlaylists, createPlaylist, addTrackToPlaylist, getPlaylistTracks, playPlaylist, deletePlaylist } from './router.js';
+import { addTrackToQueue, clearQueue, setCurrentIndex, getPlaylists, createPlaylist, addTrackToPlaylist, getPlaylistTracks, deletePlaylist } from './router.js';
 import { parseAudioMetadata } from './metadata-parser.js';
-import { getAnimatedArtwork } from './animated-art.js';
-import { robustFetch, fetchJson } from './network-utils.js';
+import { robustFetch } from './network-utils.js';
 import { TTMLDownloader } from './ttml-downloader.js';
 import isRtl from './is-rtl.js';
 import { escapeHTML } from './security-utils.js';
+
+const API_BASE = "https://spicyamllplayer-api.hf.space";
 
 document.addEventListener('DOMContentLoaded', () => {
   const ttmlZone = document.getElementById('ttml-zone');
@@ -21,16 +22,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const prepOverlay = document.getElementById('prep-overlay');
   const prepStatus = document.getElementById('prep-status');
-  const trendingGrid = document.getElementById('trending-grid');
-  const albumsGrid = document.getElementById('albums-grid');
 
   // Search Elements
   const catalogSearch = document.getElementById('catalog-search');
+  const searchClearBtn = document.getElementById('search-clear-btn');
   const listenInitialContent = document.getElementById('listen-initial-content');
-  const searchSearchResults = document.getElementById('search-results-container');
-  const searchGrid = document.getElementById('search-grid');
-  const searchTitle = document.getElementById('search-results-title');
-  const searchBackBtn = document.getElementById('search-back-btn');
+  const searchResultsContainer = document.getElementById('search-results-container');
+  const recentlySearchedSection = document.getElementById('recently-searched-section');
+  const recentlySearchedGrid = document.getElementById('recently-searched-grid');
+  const clearRecentSearchesBtn = document.getElementById('clear-recent-searches-btn');
+  const categoriesGrid = document.getElementById('categories-grid');
+
+  // Categorized Search Grid Elements
+  const sectionTopResults = document.getElementById('section-top-results');
+  const topResultsGrid = document.getElementById('top-results-grid');
+
+  const sectionArtists = document.getElementById('section-artists');
+  const artistsGrid = document.getElementById('artists-grid');
+
+  const sectionSongs = document.getElementById('section-songs');
+  const songsGrid = document.getElementById('songs-grid');
+
+  const sectionAlbums = document.getElementById('section-albums');
+  const albumsGrid = document.getElementById('albums-grid');
+
+  const sectionPlaylists = document.getElementById('section-playlists');
+  const playlistsSearchGrid = document.getElementById('playlists-search-grid');
+
+  const sectionVideos = document.getElementById('section-videos');
+  const videosGrid = document.getElementById('videos-grid');
 
   // Album View
   const albumViewContainer = document.getElementById('album-view-container');
@@ -75,116 +95,85 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let currentFetchedTTML = null;
   let currentFetchedSong = null;
-
   let contextMenuTrack = null;
 
-  let stagedAudio = []; // Array of { file, ttmlFile: null }
-  let stagedTTML = [];  // Array of File
+  let stagedAudio = [];
+  let stagedTTML = [];
 
   // ── Zone Click ──
-  ttmlZone.addEventListener('click', (e) => {
-    if (e.target === ttmlInput) return;
-    console.log('TTML Zone clicked');
-    ttmlInput.click();
-  });
+  if (ttmlZone) {
+    ttmlZone.addEventListener('click', (e) => {
+      if (e.target === ttmlInput) return;
+      ttmlInput.click();
+    });
+  }
 
-  audioZone.addEventListener('click', (e) => {
-    if (e.target === audioInput) return;
-    console.log('Audio Zone clicked');
-    audioInput.click();
-  });
+  if (audioZone) {
+    audioZone.addEventListener('click', (e) => {
+      if (e.target === audioInput) return;
+      audioInput.click();
+    });
+  }
 
   // ── File Input Change ──
-  ttmlInput.addEventListener('change', (e) => {
-    handleTTMLFiles(Array.from(e.target.files));
-  });
-
-  audioInput.addEventListener('change', (e) => {
-    handleAudioFiles(Array.from(e.target.files));
-  });
+  if (ttmlInput) ttmlInput.addEventListener('change', (e) => handleTTMLFiles(Array.from(e.target.files)));
+  if (audioInput) audioInput.addEventListener('change', (e) => handleAudioFiles(Array.from(e.target.files)));
 
   // ── Drag & Drop ──
   [ttmlZone, audioZone].forEach(zone => {
-    zone.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      zone.classList.add('dragover');
-    });
-    zone.addEventListener('dragleave', () => {
-      zone.classList.remove('dragover');
-    });
+    if (!zone) return;
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
     zone.addEventListener('drop', (e) => {
       e.preventDefault();
       zone.classList.remove('dragover');
       const files = Array.from(e.dataTransfer.files);
       if (files.length === 0) return;
-
       if (zone === ttmlZone) handleTTMLFiles(files);
       else handleAudioFiles(files);
     });
   });
 
-  // ── File Handlers ──
   function handleTTMLFiles(files) {
-    console.log('Processing TTML files:', files.map(f => f.name));
     const validFiles = files.filter(f => {
       const ext = f.name.split('.').pop().toLowerCase();
       return ext === 'ttml' || ext === 'xml';
     });
-
-    if (validFiles.length < files.length) {
-      showError('Skipped some non-TTML files.');
-    }
-
+    if (validFiles.length < files.length) showError('Skipped non-TTML files.');
     stagedTTML = [...stagedTTML, ...validFiles];
     matchAndRender();
   }
 
   function handleAudioFiles(files) {
-    console.log('Processing audio files:', files.map(f => f.name));
     const audioExts = ['mp3', 'flac', 'wav', 'ogg', 'm4a', 'aac'];
-    const playlistExts = ['m3u', 'json'];
-
     const validAudio = [];
     files.forEach(f => {
       const ext = f.name.split('.').pop().toLowerCase();
       if (audioExts.includes(ext)) {
         validAudio.push({ file: f, ttmlFile: null });
-      } else if (playlistExts.includes(ext)) {
-        handlePlaylistImport(f);
       }
     });
-
-    if (validAudio.length === 0 && files.length > 0) {
-      showError('No valid audio files found.');
-    }
-
+    if (validAudio.length === 0 && files.length > 0) showError('No valid audio files found.');
     stagedAudio = [...stagedAudio, ...validAudio];
     matchAndRender();
   }
 
-  /**
-   * Automatically match audio files with TTML files by name.
-   */
   function matchAndRender() {
     clearError();
-
     stagedAudio.forEach(item => {
       const baseName = item.file.name.replace(/\.[^/.]+$/, "");
-
-      // Look for a matching TTML if not already matched
       if (!item.ttmlFile) {
         const match = stagedTTML.find(tf => tf.name.replace(/\.[^/.]+$/, "") === baseName);
         if (match) item.ttmlFile = match;
       }
     });
-
     renderQueue();
     checkReady();
   }
 
   function renderQueue() {
+    if (!queueList) return;
     queueList.innerHTML = '';
-
     if (stagedAudio.length > 0) {
       queuePreview.classList.add('active');
       queueCount.textContent = `${stagedAudio.length} track${stagedAudio.length > 1 ? 's' : ''}`;
@@ -198,7 +187,6 @@ document.addEventListener('DOMContentLoaded', () => {
       el.draggable = true;
       el.dataset.index = index;
 
-      // TTML Options
       let ttmlOptions = '<option value="">⏳ Auto-fetch lyrics</option>';
       stagedTTML.forEach((tf, tfIdx) => {
         const isSelected = item.ttmlFile === tf;
@@ -222,51 +210,8 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       `;
       queueList.appendChild(el);
-
-      // Drag Events
-      el.addEventListener('dragstart', (e) => {
-        el.classList.add('dragging');
-        e.dataTransfer.setData('text/plain', index);
-      });
-
-      el.addEventListener('dragend', () => el.classList.remove('dragging'));
     });
 
-    // Drop Logic for Reordering
-    queueList.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      const draggingEl = queueList.querySelector('.dragging');
-      const afterElement = getDragAfterElement(queueList, e.clientY);
-      if (afterElement == null) {
-        queueList.appendChild(draggingEl);
-      } else {
-        queueList.insertBefore(draggingEl, afterElement);
-      }
-    });
-
-    queueList.addEventListener('drop', (e) => {
-      e.preventDefault();
-      const newOrder = Array.from(queueList.querySelectorAll('.queue-item')).map(item => parseInt(item.dataset.index, 10));
-      const reorderedAudio = newOrder.map(idx => stagedAudio[idx]);
-      stagedAudio = reorderedAudio;
-      // Re-render to update indices if needed, but avoid flickering
-      setTimeout(() => renderQueue(), 50);
-    });
-
-    // Manual TTML Selection
-    queueList.querySelectorAll('.ttml-select').forEach(sel => {
-      sel.onchange = (e) => {
-        const audioIdx = parseInt(e.target.dataset.index, 10);
-        const ttmlIdx = e.target.value;
-        if (ttmlIdx === "") {
-          stagedAudio[audioIdx].ttmlFile = null;
-        } else {
-          stagedAudio[audioIdx].ttmlFile = stagedTTML[parseInt(ttmlIdx, 10)];
-        }
-      };
-    });
-
-    // Remove item logic
     queueList.querySelectorAll('.remove-item').forEach(btn => {
       btn.onclick = (e) => {
         const idx = parseInt(e.target.closest('button').dataset.index, 10);
@@ -276,40 +221,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function getDragAfterElement(container, y) {
-    const draggableElements = [...container.querySelectorAll('.queue-item:not(.dragging)')];
-    return draggableElements.reduce((closest, child) => {
-      const box = child.getBoundingClientRect();
-      const offset = y - box.top - box.height / 2;
-      if (offset < 0 && offset > closest.offset) {
-        return { offset: offset, element: child };
-      } else {
-        return closest;
-      }
-    }, { offset: Number.NEGATIVE_INFINITY }).element;
-  }
-
-  async function handlePlaylistImport(file) {
-    const text = await readFileAsText(file);
-    const ext = file.name.split('.').pop().toLowerCase();
-
-    if (ext === 'json') {
-      try {
-        const data = JSON.parse(text);
-        if (data.tracks) {
-          showError('JSON Playlist imported. Please ensure matching audio files are uploaded.');
-          // Logic for JSON reordering can go here
-        }
-      } catch (e) {
-        showError('Invalid JSON playlist.');
-      }
-    } else if (ext === 'm3u') {
-      showError('M3U playlist detected. Ordering will follow the file list.');
-      // Logic for M3U parsing can go here
-    }
-  }
-
   function checkReady() {
+    if (!startBtn) return;
     if (stagedAudio.length > 0) {
       startBtn.classList.add('enabled');
       startBtn.removeAttribute('disabled');
@@ -319,467 +232,828 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  clearQueueBtn.onclick = () => {
-    stagedAudio = [];
-    stagedTTML = [];
-    matchAndRender();
-  };
+  if (clearQueueBtn) {
+    clearQueueBtn.onclick = () => {
+      stagedAudio = [];
+      stagedTTML = [];
+      matchAndRender();
+    };
+  }
 
-  // ── Start Playback ──
-  startBtn.addEventListener('click', async () => {
-    if (stagedAudio.length === 0) return;
+  if (startBtn) {
+    startBtn.addEventListener('click', async () => {
+      if (stagedAudio.length === 0) return;
+      startBtn.disabled = true;
 
-    const originalText = startBtn.querySelector('span');
-    if (originalText) originalText.textContent = 'Preparing Queue...';
-    else startBtn.textContent = 'Preparing Queue...';
+      try {
+        await clearQueue();
+        for (const item of stagedAudio) {
+          const audioBuffer = await readFileAsArrayBuffer(item.file);
+          const metadata = await parseAudioMetadata(audioBuffer, item.file.name);
+          let ttmlContent = item.ttmlFile ? await readFileAsText(item.ttmlFile) : '__AUTO_FETCH__';
 
-    startBtn.classList.remove('enabled');
-    startBtn.disabled = true;
-
-    try {
-      await clearQueue(); // Start fresh
-
-      for (const item of stagedAudio) {
-        const audioBuffer = await readFileAsArrayBuffer(item.file);
-        const metadata = await parseAudioMetadata(audioBuffer, item.file.name);
-
-        let ttmlContent = null;
-        if (item.ttmlFile) {
-          ttmlContent = await readFileAsText(item.ttmlFile);
-        } else {
-          ttmlContent = '__AUTO_FETCH__';
+          await addTrackToQueue(audioBuffer, {
+            name: metadata.title || item.file.name,
+            artist: metadata.artist || 'Unknown Artist',
+            artUrl: metadata.artUrl || null,
+            type: item.file.type || 'audio/mpeg',
+            ttml: ttmlContent
+          });
         }
-
-        await addTrackToQueue(audioBuffer, {
-          name: metadata.title || item.file.name,
-          artist: metadata.artist || 'Unknown Artist',
-          artUrl: metadata.artUrl || null,
-          type: item.file.type || 'audio/mpeg',
-          ttml: ttmlContent
-        });
+        setCurrentIndex(0);
+        window.location.href = 'player.html';
+      } catch (err) {
+        showError('Failed to prepare queue: ' + err.message);
+        startBtn.disabled = false;
       }
+    });
+  }
 
-      setCurrentIndex(0);
-      window.location.href = 'player.html';
-    } catch (err) {
-      console.error('Queue processing failed:', err);
-      showError('Failed to prepare queue: ' + err.message);
-      startBtn.textContent = 'Start Playback';
-      startBtn.classList.add('enabled');
-      startBtn.disabled = false;
-    }
-  });
-
-  // ── Sidebar & Mobile Navigation ──
-  const navItems = document.querySelectorAll('.am-nav-item, .am-mobile-nav-item');
+  // ── Navigation Tabs ──
+  const navItems = document.querySelectorAll('.am-nav-item');
   const pages = document.querySelectorAll('.am-page');
 
   navItems.forEach(item => {
     item.addEventListener('click', () => {
       const pageId = item.dataset.page;
-      if (!pageId || pageId === 'browse' || pageId === 'radio') return;
+      if (!pageId) return;
 
-      // Update Active Nav (Both sidebar and mobile nav)
-      navItems.forEach(i => i.classList.remove('am-nav-active', 'am-mobile-nav-active'));
-      document.querySelectorAll(`[data-page="${pageId}"]`).forEach(el => {
-        if (el.classList.contains('am-nav-item')) el.classList.add('am-nav-active');
-        if (el.classList.contains('am-mobile-nav-item')) el.classList.add('am-mobile-nav-active');
-      });
+      navItems.forEach(i => i.classList.remove('am-nav-active'));
+      document.querySelectorAll(`[data-page="${pageId}"]`).forEach(el => el.classList.add('am-nav-active'));
 
-      // Update Active Page
       pages.forEach(p => p.classList.remove('active'));
       const targetPage = document.getElementById(`page-${pageId}`);
       if (targetPage) targetPage.classList.add('active');
 
       if (pageId === 'listen') {
-         // Reset views
-         listenInitialContent.style.display = 'block';
-         searchSearchResults.classList.add('hidden');
-         albumViewContainer.classList.add('hidden');
-         artistViewContainer.classList.add('hidden');
-         if (catalogSearch) catalogSearch.value = '';
-         fetchTrending();
+        clearSearchUI();
+        loadLandingView();
       }
       if (pageId === 'playlists') renderPlaylistsPage();
       if (pageId === 'songs') renderFavoritesPage();
       if (pageId === 'recent') renderRecentPage();
-      if (pageId === 'download-ttml') {
-        if (ttmlSongIdInput) ttmlSongIdInput.value = '';
-        if (ttmlResultContainer) ttmlResultContainer.classList.add('hidden');
-        if (ttmlStatus) {
-           ttmlStatus.textContent = '';
-           ttmlStatus.className = 'status-indicator';
-        }
-      }
-      if (pageId === 'download-song') {
-        const dlSongInput = document.getElementById('dl-song-input');
-        const dlSongStatus = document.getElementById('dl-song-status');
-        if (dlSongInput) dlSongInput.value = '';
-        if (dlSongStatus) {
-           dlSongStatus.textContent = '';
-           dlSongStatus.className = 'status-indicator';
-        }
-      }
     });
   });
 
-  // ── TTML Downloader Logic (V2) ──
-  if (fetchTtmlBtn) {
-    const btnText = fetchTtmlBtn.querySelector('.btn-text');
-    const btnLoader = fetchTtmlBtn.querySelector('.btn-loader');
+  // ── Categories & Landing View (using Recommendations endpoint) ──
+  async function loadLandingView() {
+    renderRecentlySearched();
+    fetchCategories();
+  }
 
-    fetchTtmlBtn.onclick = async () => {
-      const songId = ttmlSongIdInput.value.trim();
-      if (!songId) {
-        ttmlStatus.textContent = 'Please enter a valid Song ID.';
-        ttmlStatus.className = 'status-indicator error';
+  async function fetchCategories() {
+    if (!categoriesGrid) return;
+    try {
+      const res = await fetch(`${API_BASE}/recommendations?name=search-landing`);
+      if (!res.ok) throw new Error(`Status ${res.status}`);
+      const data = await res.json();
+      
+      const curators = data.resources?.['apple-curators'] || {};
+      const categories = Object.values(curators);
+
+      if (categories.length === 0) {
+        categoriesGrid.innerHTML = `<p class="am-empty-msg">No browse categories available.</p>`;
         return;
       }
 
-      // Start Loading State
-      fetchTtmlBtn.disabled = true;
-      if (btnText) btnText.textContent = 'Searching...';
-      if (btnLoader) btnLoader.classList.remove('hidden');
-      
-      ttmlStatus.textContent = '';
-      ttmlStatus.className = 'status-indicator';
-      ttmlResultContainer.classList.add('hidden');
-      downloadTtmlBtn.disabled = true;
+      categoriesGrid.innerHTML = categories.map(cat => {
+        const name = cat.attributes?.name || 'Category';
+        const artObj = cat.attributes?.artwork;
+        const artUrl = artObj?.url ? artObj.url.replace('{w}', '400').replace('{h}', '250').replace('{f}', 'jpg').replace('{c}', 'cc') : '';
+        const bgColor = artObj?.bgColor ? `#${artObj.bgColor}` : '#333';
 
-      try {
-        // 1. Fetch Metadata
-        const metadata = await TTMLDownloader.fetchMetadata(songId);
-        currentFetchedSong = metadata;
-        
-        ttmlPreviewName.textContent = metadata.name;
-        if (isRtl(metadata.name)) ttmlPreviewName.classList.add('rtl');
-        else ttmlPreviewName.classList.remove('rtl');
+        return `
+          <div class="am-category-card" style="background-color: ${bgColor}" data-name="${escapeHTML(name)}">
+            ${artUrl ? `<img src="${artUrl}" loading="lazy" alt="${escapeHTML(name)}" class="am-category-bg">` : ''}
+            <span class="am-category-title">${escapeHTML(name)}</span>
+          </div>
+        `;
+      }).join('');
 
-        ttmlPreviewArtist.textContent = metadata.artist;
-        if (isRtl(metadata.artist)) ttmlPreviewArtist.classList.add('rtl');
-        else ttmlPreviewArtist.classList.remove('rtl');
-
-        ttmlPreviewArt.src = metadata.artUrl;
-        
-        if (btnText) btnText.textContent = 'Extracting TTML...';
-
-        // 2. Fetch TTML
-        const ttml = await TTMLDownloader.fetchTTML(songId);
-        if (!ttml) throw new Error('No TTML content available for this ID.');
-        
-        currentFetchedTTML = ttml;
-        ttmlCodeBlock.textContent = ttml;
-        
-        // 3. Success State
-        ttmlResultContainer.classList.remove('hidden');
-        downloadTtmlBtn.disabled = false;
-        ttmlStatus.textContent = 'Lyrics successfully extracted!';
-        ttmlStatus.className = 'status-indicator success';
-        
-      } catch (err) {
-        console.error('[Downloader] Error:', err);
-        ttmlStatus.textContent = err.message;
-        ttmlStatus.className = 'status-indicator error';
-      } finally {
-        fetchTtmlBtn.disabled = false;
-        if (btnText) btnText.textContent = 'Fetch Lyrics';
-        if (btnLoader) btnLoader.classList.add('hidden');
-      }
-    };
-  }
-
-  if (downloadTtmlBtn) {
-    downloadTtmlBtn.onclick = () => {
-      if (!currentFetchedTTML || !currentFetchedSong) return;
-      
-      const filename = `${currentFetchedSong.name} - ${currentFetchedSong.artist}.ttml`;
-      TTMLDownloader.download(filename, currentFetchedTTML);
-    };
-  }
-
-  // ── Listen Now / Trending Logic ──
-  let trendingCache = null;
-  let albumsCache = null;
-
-  // ── iTunes Search to Apple Music API Mapper ──
-  function mapSearchAmToItunes(item) {
-    if (!item || !item.attributes) return item;
-    const attr = item.attributes;
-    const artUrl = attr.artwork?.url ? attr.artwork.url.replace(/{w}/g, '100').replace(/{h}/g, '100') : '';
-    return {
-      wrapperType: item.type === 'songs' ? 'track' : 'collection',
-      trackId: item.id,
-      collectionId: item.id,
-      trackName: attr.name,
-      artistName: attr.artistName,
-      artistId: item.relationships?.artists?.data?.[0]?.id || item.artistId || null,
-      collectionName: attr.albumName || attr.name,
-      artworkUrl100: artUrl,
-      releaseDate: attr.releaseDate,
-      trackCount: attr.trackCount || 0,
-      url: attr.url
-    };
-  }
-
-  /*
-  async function itunesFetch(url) {
-    // Strategy 1: Plain fetch (works in test.html)
-    try {
-      const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
-      if (res.ok) return await res.json();
-      console.warn(`[iTunes] Direct fetch returned ${res.status}`);
-    } catch (e) {
-      console.warn(`[iTunes] Direct fetch failed:`, e.message);
-    }
-
-    // Strategy 2: allorigins proxy
-    try {
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-      const res = await fetch(proxyUrl);
-      if (res.ok) return await res.json();
-    } catch (e) {
-      console.warn(`[iTunes] allorigins proxy failed:`, e.message);
-    }
-
-    // Strategy 3: corsproxy
-    try {
-      const proxyUrl = `https://proxy.corsfix.com/?${encodeURIComponent(url)}`;
-      const res = await fetch(proxyUrl);
-      if (res.ok) return await res.json();
-    } catch (e) {
-      console.warn(`[iTunes] corsfix proxy failed:`, e.message);
-    }
-
-    throw new Error('All fetch strategies failed for: ' + url);
-  }*/ // ehh
-
-  async function fetchTrending() {
-    if (trendingCache && albumsCache) {
-      renderListenNow(trendingCache);
-      renderFeaturedAlbums(albumsCache);
-      return;
-    }
-
-    try {
-      const songsRes = await fetch(
-        "https://spicyamllplayer-api.hf.space/search?term=pop&types=songs&limit=15"
-      );
-      if (!songsRes.ok) throw new Error(`holy shit ${songsRes.status}`);
-      const songsData = await songsRes.json();
-
-      trendingCache = songsData.results?.songs?.data?.map(mapSearchAmToItunes) || [];
-      renderListenNow(trendingCache);
-
-      const albumsRes = await fetch(
-        "https://spicyamllplayer-api.hf.space/search?term=2024&types=albums&limit=6"
-      );
-      if (!albumsRes.ok) throw new Error(`holy shit ${albumsRes.status}`);
-      const albumsData = await albumsRes.json();
-
-      albumsCache = albumsData.results?.albums?.data?.map(mapSearchAmToItunes) || [];
-      renderFeaturedAlbums(albumsCache);
+      categoriesGrid.querySelectorAll('.am-category-card').forEach(card => {
+        card.onclick = () => {
+          const categoryName = card.dataset.name;
+          if (catalogSearch) {
+            catalogSearch.value = categoryName;
+            performSearch(categoryName);
+          }
+        };
+      });
 
     } catch (err) {
-      console.error("Failed to fetch trending:", err);
-      if (trendingGrid) {
-        trendingGrid.innerHTML = `<div class="am-error-msg">Failed to load trending. Try refreshing.</div>`;
-      }
+      console.warn("Failed to load categories:", err);
+      categoriesGrid.innerHTML = `<p class="am-error-msg">Could not load browse categories.</p>`;
     }
   }
 
-  function renderListenNow(songs) {
-    if (!trendingGrid) return;
-    trendingGrid.innerHTML = songs.map(song => {
-      const highResArt = song.artworkUrl100.replace('100x100', '600x600');
-      const safeName = escapeHTML(song.trackName);
-      const safeArtist = escapeHTML(song.artistName);
-      return `
-        <div class="trending-card animate-fade" data-id="${song.trackId}">
-          <div class="trending-art">
-            <img src="${highResArt}" loading="lazy" alt="${safeName}">
-          </div>
-          <div class="trending-info">
-            <h4>${safeName}</h4>
-            <p>${safeArtist}</p>
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    // Add Context Menu Listeners
-    trendingGrid.querySelectorAll('.trending-card').forEach(card => {
-      card.onclick = (e) => {
-        const id = card.dataset.id;
-        const song = songs.find(s => s.trackId == id);
-        if (song) showContextMenu(e, song);
-      };
-    });
+  // ── Recently Searched Local Storage Handling ──
+  function getRecentSearches() {
+    return JSON.parse(localStorage.getItem('spicy_recent_searches') || '[]');
   }
 
-  function renderFeaturedAlbums(albums) {
-    if (!albumsGrid) return;
-    albumsGrid.innerHTML = albums.map(album => {
-      const safeName = escapeHTML(album.collectionName);
-      const safeArtist = escapeHTML(album.artistName);
-      return `
-      <div class="album-card animate-fade" data-query="${safeName} ${safeArtist}">
-        <img src="${album.artworkUrl100.replace('100x100', '300x300')}" class="album-art" loading="lazy">
-        <div class="album-info">
-          <h4>${safeName}</h4>
-          <p>${safeArtist}</p>
-        </div>
-      </div>
-    `;
-    }).join('');
-
-    albumsGrid.querySelectorAll('.album-card').forEach(card => {
-      card.onclick = async () => {
-        const query = card.dataset.query;
-        // In real Apple Music click opens album directly, here we simulate by fetching album items if we have ID. Since it's a search result, let's look up by exact keyword or switch to openAlbum
-        let album = albums.find(a => (a.collectionName + " " + a.artistName) === query);
-        if(album) {
-            openAlbumView(album.collectionId, album.collectionName, album.artistName, album.artworkUrl100);
-        } else {
-             if (catalogSearch) { catalogSearch.value = query; performSearch(); }
-        }
-      };
-    });
+  function saveRecentSearch(item) {
+    let recent = getRecentSearches();
+    recent = recent.filter(r => r.id !== item.id);
+    recent.unshift(item);
+    if (recent.length > 8) recent.pop();
+    localStorage.setItem('spicy_recent_searches', JSON.stringify(recent));
   }
 
-  // ── Search Logic ──
-  if (catalogSearch) {
-    catalogSearch.onkeypress = (e) => {
-      if (e.key === 'Enter') performSearch();
-    };
-  }
+  function renderRecentlySearched() {
+    if (!recentlySearchedSection || !recentlySearchedGrid) return;
+    const recent = getRecentSearches();
 
-
-  if (searchBackBtn) {
-    searchBackBtn.onclick = clearSearch;
-  }
-
-  async function performSearch() {
-    const query = catalogSearch.value.trim();
-    if (!query) {
-      clearSearch();
+    if (recent.length === 0) {
+      recentlySearchedSection.classList.add('hidden');
       return;
     }
 
-    // Handle /songid command
+    recentlySearchedSection.classList.remove('hidden');
+    recentlySearchedGrid.innerHTML = recent.map(item => `
+      <div class="am-recent-search-chip" data-id="${item.id}" data-type="${item.type}">
+        <img src="${item.artUrl || 'favicon.svg'}" class="am-chip-art">
+        <div class="am-chip-info">
+          <div class="am-chip-title">${escapeHTML(item.title)}</div>
+          <div class="am-chip-sub">${escapeHTML(item.sub || item.type)}</div>
+        </div>
+      </div>
+    `).join('');
+
+    recentlySearchedGrid.querySelectorAll('.am-recent-search-chip').forEach(chip => {
+      chip.onclick = () => {
+        const id = chip.dataset.id;
+        const type = chip.dataset.type;
+        if (type === 'song') loadTrackById(id);
+        else if (type === 'album') fetchAlbumDetails(id);
+        else if (type === 'artist') openArtistView(id, chip.querySelector('.am-chip-title').textContent);
+      };
+    });
+  }
+
+  if (clearRecentSearchesBtn) {
+    clearRecentSearchesBtn.onclick = () => {
+      localStorage.removeItem('spicy_recent_searches');
+      renderRecentlySearched();
+    };
+  }
+
+  // ── Search Handling ──
+  let searchDebounceTimeout = null;
+
+  if (catalogSearch) {
+    catalogSearch.addEventListener('input', (e) => {
+      const query = e.target.value;
+      if (query.trim().length > 0) {
+        if (searchClearBtn) searchClearBtn.classList.remove('hidden');
+      } else {
+        if (searchClearBtn) searchClearBtn.classList.add('hidden');
+        clearSearchUI();
+        return;
+      }
+
+      clearTimeout(searchDebounceTimeout);
+      searchDebounceTimeout = setTimeout(() => {
+        performSearch(query.trim());
+      }, 400);
+    });
+
+    catalogSearch.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        clearTimeout(searchDebounceTimeout);
+        performSearch(catalogSearch.value.trim());
+      }
+    });
+  }
+
+  if (searchClearBtn) {
+    searchClearBtn.onclick = () => {
+      catalogSearch.value = '';
+      searchClearBtn.classList.add('hidden');
+      clearSearchUI();
+    };
+  }
+
+  function clearSearchUI() {
+    if (listenInitialContent) listenInitialContent.classList.remove('hidden');
+    if (searchResultsContainer) searchResultsContainer.classList.add('hidden');
+    if (albumViewContainer) albumViewContainer.classList.add('hidden');
+    if (artistViewContainer) artistViewContainer.classList.add('hidden');
+  }
+
+  async function performSearch(query) {
+    if (!query) {
+      clearSearchUI();
+      return;
+    }
+
     if (query.startsWith('/songid ')) {
       const id = query.replace('/songid ', '').trim();
-      if (id && /^\d+$/.test(id)) {
+      if (/^\d+$/.test(id)) {
         loadTrackById(id);
         return;
       }
     }
 
-    listenInitialContent.style.display = 'none';
+    listenInitialContent.classList.add('hidden');
     albumViewContainer.classList.add('hidden');
     artistViewContainer.classList.add('hidden');
-    searchSearchResults.classList.remove('hidden');
-    searchTitle.textContent = `Results for "${query}"`;
-    searchGrid.innerHTML = `<div class="am-loading-msg">Searching catalog...</div>`;
+    searchResultsContainer.classList.remove('hidden');
+
+    resetSearchResultsSections();
 
     try {
-      // const data = await itunesFetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=25`);
-      const res = await fetch(`https://spicyamllplayer-api.hf.space/search?term=${encodeURIComponent(query)}&types=songs&limit=25`);
+      const res = await fetch(`${API_BASE}/search?term=${encodeURIComponent(query)}`);
+      if (!res.ok) throw new Error(`Search failed: ${res.status}`);
       const data = await res.json();
-      renderSearchResults(data.results?.songs?.data?.map(mapSearchAmToItunes) || []);
+      renderCategorizedSearchResults(data.results || {});
     } catch (err) {
-      console.error("Search failed:", err);
-      searchGrid.innerHTML = `<div class="am-error-msg">Search failed. Check your connection.</div>`;
+      console.error("Search API Error:", err);
+      showError("Failed to perform search. Please try again.");
     }
   }
 
-  function clearSearch() {
-    if(catalogSearch) catalogSearch.value = '';
-    listenInitialContent.style.display = 'block';
-    searchSearchResults.classList.add('hidden');
-    albumViewContainer.classList.add('hidden');
-    artistViewContainer.classList.add('hidden');
+  function resetSearchResultsSections() {
+    [sectionTopResults, sectionArtists, sectionSongs, sectionAlbums, sectionPlaylists, sectionVideos].forEach(sec => {
+      if (sec) sec.classList.add('hidden');
+    });
+  }
+// Helper: Format duration into hours and minutes or total minutes
+function formatTotalAlbumDuration(seconds) {
+  const totalMins = Math.round(seconds / 60);
+  if (totalMins >= 60) {
+    const hrs = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
+    return `${hrs} ${hrs === 1 ? 'hour' : 'hours'}, ${mins} minutes`;
+  }
+  return `${totalMins} minutes`;
+}
+
+// Render Artist View with expandable bio and metadata
+function renderArtistView(artistData) {
+  const container = document.getElementById('artist-view-container');
+  if (!container) return;
+
+  const bioText = artistData.bio || "No description available.";
+  const hometown = artistData.hometown || "Unknown";
+  const born = artistData.born || "N/A";
+  const genre = artistData.genre || "Pop";
+
+  container.innerHTML = `
+    <div class="am-artist-header" style="background-image: url('${artistData.headerImg || ''}')">
+      <h1 class="am-artist-name-overlay">${artistData.name}</h1>
+    </div>
+    
+    <div class="am-about-section">
+      <h2 style="color: #fff; font-size: 20px; margin-bottom: 8px;">About</h2>
+      <div class="am-about-text-container" id="artist-about-text">
+        <p style="color: #d1d1d6; font-size: 14px;">${bioText}</p>
+      </div>
+      <button class="am-show-more-btn" id="about-toggle-btn">More</button>
+      
+      <div class="am-artist-meta-grid">
+        <div class="am-meta-item">
+          <label>Hometown</label>
+          <span>${hometown}</span>
+        </div>
+        <div class="am-meta-item">
+          <label>Born</label>
+          <span>${born}</span>
+        </div>
+        <div class="am-meta-item">
+          <label>Genre</label>
+          <span>${genre}</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Toggle truncated description
+  const toggleBtn = document.getElementById('about-toggle-btn');
+  const textContainer = document.getElementById('artist-about-text');
+  
+  toggleBtn.addEventListener('click', () => {
+    const isExpanded = textContainer.classList.toggle('expanded');
+    toggleBtn.textContent = isExpanded ? 'Less' : 'More';
+  });
+}
+
+// Render Album Metadata, Track Count, Duration & Production Team
+function renderAlbumFooter(albumData, tracks) {
+  const footerContainer = document.getElementById('album-footer-info');
+  if (!footerContainer) return;
+
+  const totalSeconds = tracks.reduce((acc, track) => acc + (track.duration || 0), 0);
+  const formattedDuration = formatTotalAlbumDuration(totalSeconds);
+  const releaseDate = albumData.releaseDate ? new Date(albumData.releaseDate).toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  }) : 'Unknown Date';
+
+  const productionTeam = albumData.productionTeam || albumData.copyright || 'Rotana Audiovisual';
+
+  footerContainer.innerHTML = `
+    <div>${releaseDate}</div>
+    <div>${tracks.length} songs, ${formattedDuration}</div>
+    <div>℗ ${productionTeam}</div>
+  `;
+}
+
+// Render Floating Bottom Player Component
+function renderBottomPlayer(track) {
+  let playerEl = document.getElementById('am-bottom-player');
+  if (!playerEl) {
+    playerEl = document.createElement('div');
+    playerEl.id = 'am-bottom-player';
+    playerEl.className = 'am-bottom-player';
+    document.body.appendChild(playerEl);
   }
 
-  function renderSearchResults(results) {
-    if (!searchGrid) return;
-    if (results.length === 0) {
-      searchGrid.innerHTML = `<div class="am-error-msg">No results found.</div>`;
-      return;
+  playerEl.innerHTML = `
+    <div class="am-player-track-info">
+      <img class="am-player-cover" src="${track.coverUrl || 'placeholder.jpg'}" alt="Cover" />
+      <div class="am-player-details">
+        <span class="am-player-title">${track.title}</span>
+        <span style="font-size: 12px; color: #8e8e93;">${track.artist || ''}</span>
+      </div>
+    </div>
+    <div class="am-player-controls">
+      <button class="am-player-btn" id="am-play-pause-btn">❚❚</button>
+      <button class="am-player-btn" id="am-next-btn">❯❯</button>
+    </div>
+  `;
+}
+
+// Handle Preview Playback directly inside index.html without navigating to player.html
+// Updated Preview Queue function inside upload.js
+function playPreviewAudioQueue(tracks) {
+  if (!tracks || tracks.length === 0) return;
+
+  if (window._activePreviewAudio) {
+    window._activePreviewAudio.pause();
+    window._activePreviewAudio = null;
+  }
+
+  let index = 0;
+
+  function playTrack(idx) {
+    if (idx >= tracks.length) return;
+    const track = tracks[idx];
+    const previewUrl = `${API_BASE}/download?song=${track.id}`;
+
+    const audio = new Audio(previewUrl);
+    window._activePreviewAudio = audio;
+
+    // Render Floating Mini Player UI
+    renderBottomPlayer({
+      title: track.name || track.title,
+      artist: track.artistName || track.artist || 'Unknown Artist',
+      coverUrl: track.artUrl || 'favicon.svg'
+    });
+
+    // Register OS Media Session Controls
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: track.name || track.title,
+        artist: track.artistName || track.artist || 'Unknown Artist',
+        artwork: [{ src: track.artUrl || 'favicon.svg', sizes: '512x512', type: 'image/jpeg' }]
+      });
+
+      navigator.mediaSession.setActionHandler('play', () => audio.play());
+      navigator.mediaSession.setActionHandler('pause', () => audio.pause());
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        audio.pause();
+        if (index + 1 < tracks.length) playTrack(++index);
+      });
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        audio.pause();
+        if (index > 0) playTrack(--index);
+      });
     }
 
-    searchGrid.innerHTML = results.map(track => {
-      const highResArt = track.artworkUrl100.replace('100x100', '600x600');
-      const safeName = escapeHTML(track.trackName);
-      const safeArtist = escapeHTML(track.artistName);
+    audio.play().catch(console.warn);
+
+    // Playback state listeners
+    audio.onplay = () => {
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+      const playBtn = document.getElementById('am-play-pause-btn');
+      if (playBtn) playBtn.textContent = '❚❚';
+    };
+
+    audio.onpause = () => {
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+      const playBtn = document.getElementById('am-play-pause-btn');
+      if (playBtn) playBtn.textContent = '▶';
+    };
+
+    audio.onended = () => {
+      index++;
+      if (index < tracks.length) playTrack(index);
+    };
+  }
+
+  playTrack(index);
+}
+
+
+// Attach event listener to Preview Play Button
+document.addEventListener('DOMContentLoaded', () => {
+  const playBtn = document.getElementById('album-play-btn');
+  
+  if (playBtn) {
+    playBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (window.currentAlbumTracks && window.currentAlbumTracks.length > 0) {
+        const trackIds = window.currentAlbumTracks.map(t => t.id);
+        playPreviewAudioQueue(trackIds);
+      }
+    });
+  }
+});
+
+  function renderCategorizedSearchResults(results) {
+    // 1. Top Results
+    if (results.top && results.top.data && results.top.data.length > 0) {
+      sectionTopResults.classList.remove('hidden');
+      topResultsGrid.innerHTML = results.top.data.slice(0, 6).map(item => {
+        const attr = item.attributes || {};
+        const isSong = item.type === 'songs';
+        const isArtist = item.type === 'artists';
+        const isAlbum = item.type === 'albums';
+
+        const artUrl = attr.artwork?.url ? attr.artwork.url.replace('{w}', '200').replace('{h}', '200') : 'favicon.svg';
+        const title = attr.name || attr.trackName || 'Title';
+        const artist = attr.artistName || (isSong ? 'Song' : isAlbum ? 'Album' : 'Artist');
+        const lyricsSnippet = attr.hasLyrics ? 'Lyrics available' : '';
+
+        return `
+          <div class="am-top-result-card ${isArtist ? 'is-artist' : ''}" data-id="${item.id}" data-type="${item.type}">
+            <img src="${artUrl}" loading="lazy" class="am-top-card-art">
+            <div class="am-top-card-details">
+              <div class="am-top-card-title">${escapeHTML(title)}</div>
+              <div class="am-top-card-sub">${isSong ? 'Song • ' : isAlbum ? 'Album • ' : 'Artist '}${escapeHTML(artist)}</div>
+              ${lyricsSnippet ? `<div class="am-top-card-lyrics">Lyrics: "${escapeHTML(lyricsSnippet)}"</div>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      topResultsGrid.querySelectorAll('.am-top-result-card').forEach(card => {
+        card.onclick = (e) => {
+          const id = card.dataset.id;
+          const type = card.dataset.type;
+          const title = card.querySelector('.am-top-card-title').textContent;
+          const artUrl = card.querySelector('img').src;
+
+          saveRecentSearch({ id, type: type === 'songs' ? 'song' : type === 'albums' ? 'album' : 'artist', title, artUrl });
+
+          if (type === 'songs') loadTrackById(id);
+          else if (type === 'albums') fetchAlbumDetails(id);
+          else if (type === 'artists') openArtistView(id, title);
+        };
+      });
+    }
+
+    // 2. Artists
+    if (results.artists && results.artists.data && results.artists.data.length > 0) {
+      sectionArtists.classList.remove('hidden');
+      artistsGrid.innerHTML = results.artists.data.map(artist => {
+        const attr = artist.attributes || {};
+        const artUrl = attr.artwork?.url ? attr.artwork.url.replace('{w}', '200').replace('{h}', '200') : 'favicon.svg';
+
+        return `
+          <div class="am-artist-circle-card" data-id="${artist.id}" data-name="${escapeHTML(attr.name)}">
+            <img src="${artUrl}" loading="lazy" class="am-artist-circle-img">
+            <span class="am-artist-circle-name">${escapeHTML(attr.name)}</span>
+          </div>
+        `;
+      }).join('');
+
+      artistsGrid.querySelectorAll('.am-artist-circle-card').forEach(card => {
+        card.onclick = () => openArtistView(card.dataset.id, card.dataset.name);
+      });
+    }
+
+    // 3. Songs
+    if (results.songs && results.songs.data && results.songs.data.length > 0) {
+      sectionSongs.classList.remove('hidden');
+      songsGrid.innerHTML = results.songs.data.map(song => {
+        const attr = song.attributes || {};
+        const artUrl = attr.artwork?.url ? attr.artwork.url.replace('{w}', '120').replace('{h}', '120') : 'favicon.svg';
+
+        return `
+          <div class="am-song-row-item" data-id="${song.id}">
+            <img src="${artUrl}" loading="lazy" class="am-song-row-art">
+            <div class="am-song-row-info">
+              <div class="am-song-row-title">${escapeHTML(attr.name)}</div>
+              <div class="am-song-row-artist">${escapeHTML(attr.artistName)}</div>
+              ${attr.hasTimeSyncedLyrics ? `<span class="am-lyrics-badge">SYNCED LYRICS</span>` : ''}
+            </div>
+            <button class="am-song-more-btn" data-id="${song.id}">•••</button>
+          </div>
+        `;
+      }).join('');
+
+      songsGrid.querySelectorAll('.am-song-row-item').forEach(row => {
+        row.onclick = (e) => {
+          if (e.target.classList.contains('am-song-more-btn')) {
+            e.stopPropagation();
+            const id = row.dataset.id;
+            const songObj = results.songs.data.find(s => s.id === id);
+            showContextMenu(e, mapApiSongToLocal(songObj));
+            return;
+          }
+          loadTrackById(row.dataset.id);
+        };
+      });
+    }
+
+    // 4. Albums
+    if (results.albums && results.albums.data && results.albums.data.length > 0) {
+      sectionAlbums.classList.remove('hidden');
+      albumsGrid.innerHTML = results.albums.data.map(album => {
+        const attr = album.attributes || {};
+        const artUrl = attr.artwork?.url ? attr.artwork.url.replace('{w}', '300').replace('{h}', '300') : 'favicon.svg';
+
+        return `
+          <div class="am-standard-media-card" data-id="${album.id}">
+            <img src="${artUrl}" loading="lazy" class="am-media-card-art">
+            <div class="am-media-card-title">${escapeHTML(attr.name)}</div>
+            <div class="am-media-card-sub">${escapeHTML(attr.artistName)}</div>
+          </div>
+        `;
+      }).join('');
+
+      albumsGrid.querySelectorAll('.am-standard-media-card').forEach(card => {
+        card.onclick = () => fetchAlbumDetails(card.dataset.id);
+      });
+    }
+
+    // 5. Playlists
+    if (results.playlists && results.playlists.data && results.playlists.data.length > 0) {
+      sectionPlaylists.classList.remove('hidden');
+      playlistsSearchGrid.innerHTML = results.playlists.data.map(pl => {
+        const attr = pl.attributes || {};
+        const artUrl = attr.artwork?.url ? attr.artwork.url.replace('{w}', '300').replace('{h}', '300') : 'favicon.svg';
+
+        return `
+          <div class="am-standard-media-card" data-id="${pl.id}">
+            <img src="${artUrl}" loading="lazy" class="am-media-card-art">
+            <div class="am-media-card-title">${escapeHTML(attr.name)}</div>
+            <div class="am-media-card-sub">${escapeHTML(attr.curatorName || 'Playlist')}</div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+function mapApiSongToLocal(song) {
+  if (!song) return null;
+  const attr = song.attributes || {};
+  return {
+    trackId: song.id,
+    trackName: attr.name,
+    artistName: attr.artistName,
+    collectionName: attr.albumName,
+    // Add albumId and artistId fallback mappings:
+    albumId: song.relationships?.albums?.data?.[0]?.id || attr.albumId || null,
+    artistId: song.relationships?.artists?.data?.[0]?.id || attr.artistId || null,
+    artworkUrl100: attr.artwork?.url ? attr.artwork.url.replace('{w}', '100').replace('{h}', '100') : ''
+  };
+}
+
+// ── Album Detail View (Fetching via /album?album= ID) ──
+/**
+ * Renders full details for an album including track preview playback,
+ * composer metadata, and album copyright footer.
+ */
+async function fetchAlbumDetails(albumId) {
+  try {
+    const res = await fetch(`${API_BASE}/album?album=${albumId}`);
+    if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+    const data = await res.json();
+
+    // Support both direct wrapper formats
+    const albumData = data.raw_data?.data?.[0] || data.data?.[0];
+    if (!albumData) throw new Error("Album not found");
+
+    const albumAttr = albumData.attributes || {};
+    const trackList = albumData.relationships?.tracks?.data || [];
+
+    // Parse track attributes including preview URLs and composers
+    const parsedTracks = trackList.map(track => {
+      const trackAttr = track.attributes || {};
+      const previewUrl = trackAttr.previews?.[0]?.url || null; // Track-level preview audio
+
+      return {
+        id: track.id,
+        title: trackAttr.name,
+        artist: trackAttr.artistName,
+        composer: trackAttr.composerName || null, // Track composers
+        durationMs: trackAttr.durationInMillis || 0,
+        trackNumber: trackAttr.trackNumber,
+        previewUrl: previewUrl,
+        artUrl: trackAttr.artwork?.url 
+          ? trackAttr.artwork.url.replace('{w}', '300').replace('{h}', '300')
+          : 'favicon.svg'
+      };
+    });
+
+    // Render Track Table HTML
+    const tracksHTML = parsedTracks.map(track => `
+      <div class="am-track-row" data-preview="${track.previewUrl || ''}">
+        <div class="am-track-num">${track.trackNumber}</div>
+        <div class="am-track-info">
+          <div class="am-track-title">${escapeHTML(track.title)}</div>
+          <div class="am-track-sub">
+            ${escapeHTML(track.artist)}
+            ${track.composer ? ` • Composer: ${escapeHTML(track.composer)}` : ''}
+          </div>
+        </div>
+        <button class="am-preview-btn" ${!track.previewUrl ? 'disabled' : ''}>
+          ${track.previewUrl ? '▶ Preview' : 'No Preview'}
+        </button>
+        <div class="am-track-duration">${formatDuration(track.durationMs)}</div>
+      </div>
+    `).join('');
+
+    // Update album content container
+    albumViewContent.innerHTML = `
+      <div class="am-album-header">
+        <img src="${albumAttr.artwork?.url ? albumAttr.artwork.url.replace('{w}', '400').replace('{h}', '400') : 'favicon.svg'}" class="am-album-art">
+        <div class="am-album-meta">
+          <h1>${escapeHTML(albumAttr.name)}</h1>
+          <h2>${escapeHTML(albumAttr.artistName)}</h2>
+          <p>${(albumAttr.genreNames || []).join(', ')} • ${albumAttr.releaseDate ? albumAttr.releaseDate.split('-')[0] : ''}</p>
+        </div>
+      </div>
+
+      <div class="am-tracklist">${tracksHTML}</div>
+
+      <!-- Footer Info Section -->
+      <div class="am-album-footer-info">
+        <p class="am-footer-date">Released: ${albumAttr.releaseDate || 'N/A'}</p>
+        <p class="am-footer-copyright">${escapeHTML(albumAttr.copyright || albumAttr.recordLabel || '')}</p>
+      </div>
+    `;
+
+    // Add audio event handling for previews
+    albumViewContent.querySelectorAll('.am-preview-btn').forEach((btn, idx) => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const track = parsedTracks[idx];
+        if (track.previewUrl) {
+          playPreviewAudioQueue([track]);
+        }
+      };
+    });
+
+  } catch (err) {
+    console.error("Error fetching album details:", err);
+  }
+}
+
+/**
+ * Format milliseconds into M:SS standard string
+ */
+function formatDuration(ms) {
+  if (!ms) return '0:00';
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+}
+
+// ── Open Artist View ──
+// Replace openArtistView in upload.js
+async function openArtistView(artistId, artistName) {
+  listenInitialContent.classList.add('hidden');
+  searchResultsContainer.classList.add('hidden');
+  albumViewContainer.classList.add('hidden');
+  artistViewContainer.classList.remove('hidden');
+
+  artistViewContent.innerHTML = `<div class="am-loading-msg">Fetching Artist Profile...</div>`;
+
+  try {
+    const res = await fetch(`${API_BASE}/artist?artist=${artistId}`);
+    if (!res.ok) throw new Error(`Artist fetch failed ${res.status}`);
+    const data = await res.json();
+
+    // Correctly extract artist data from array or root object
+    const artistObj = Array.isArray(data.data) ? data.data[0] : (data.data || data);
+    if (!artistObj || !artistObj.attributes) throw new Error('Artist data invalid');
+
+    const attr = artistObj.attributes;
+    const displayName = attr.name || artistName;
+    const artistPhoto = attr.artwork?.url
+      ? attr.artwork.url.replace('{w}', '1200').replace('{h}', '800')
+      : 'favicon.svg';
+      
+    const bioText = attr.artistBio || attr.editorialNotes?.standard || "No description available.";
+    const genre = attr.genreNames?.[0] || "Music";
+
+    // Extract Albums from Relationships
+    const albumRefs = artistObj.relationships?.albums?.data || [];
+    const albumIds = albumRefs.slice(0, 12).map(a => a.id);
+
+    const albumResponses = await Promise.all(albumIds.map(id =>
+      fetch(`${API_BASE}/album?album=${id}`)
+        .then(r => (r.ok ? r.json() : null))
+        .catch(() => null)
+    ));
+
+    const albums = albumResponses
+      .map(d => d?.raw_data?.data?.[0] || d?.data?.[0])
+      .filter(Boolean);
+
+    const albumsHTML = albums.map(a => {
+      const aAttr = a.attributes || {};
+      const art = aAttr.artwork?.url ? aAttr.artwork.url.replace('{w}', '300').replace('{h}', '300') : 'favicon.svg';
+      const y = aAttr.releaseDate ? new Date(aAttr.releaseDate).getFullYear() : '';
       return `
-        <div class="trending-card animate-fade" data-id="${track.trackId}">
-          <div class="trending-art">
-             <img src="${highResArt}" loading="lazy" alt="${safeName}">
-          </div>
-          <div class="trending-info">
-             <h4>${safeName}</h4>
-             <p>${safeArtist}</p>
-          </div>
+        <div class="am-standard-media-card" data-id="${a.id}">
+          <img src="${art}" loading="lazy" class="am-media-card-art">
+          <div class="am-media-card-title">${escapeHTML(aAttr.name || '')}</div>
+          <div class="am-media-card-sub">${y}</div>
         </div>
       `;
     }).join('');
 
-    searchGrid.querySelectorAll('.trending-card').forEach(card => {
-      card.onclick = (e) => {
-        const id = card.dataset.id;
-        const song = results.find(s => s.trackId == id);
-        if (song) showContextMenu(e, song);
-      };
-    });
-  }
+    artistViewContent.innerHTML = `
+       <div class="am-artist-header" style="background-image: linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(18,18,18,1) 100%), url('${artistPhoto}'); background-size: cover; background-position: center; min-height: 240px; border-radius: 16px; margin-bottom: 20px;">
+          <div class="am-artist-name-row" style="padding: 20px;">
+              <h1 class="am-artist-name" style="color: #fff; font-size: 2rem; font-weight: 800;">${escapeHTML(displayName)}</h1>
+          </div>
+       </div>
 
+       <div class="am-about-section">
+          <h3 style="color: #fff; font-size: 18px; margin-bottom: 8px;">About</h3>
+          <div class="am-about-text-container" id="artist-about-text">
+            <p style="color: #d1d1d6; font-size: 14px;">${escapeHTML(bioText.replace(/<[^>]*>/g, ''))}</p>
+          </div>
+          <div class="am-artist-meta-grid">
+            <div class="am-meta-item">
+              <label>Genre</label>
+              <span>${escapeHTML(genre)}</span>
+            </div>
+          </div>
+       </div>
+
+       <div class="am-search-section" style="margin-top:30px;">
+          <h3 class="am-search-section-title">Albums</h3>
+          <div class="am-cards-horizontal-scroll">${albumsHTML || '<p class="am-empty-msg">No albums found</p>'}</div>
+       </div>
+    `;
+
+    artistViewContent.querySelectorAll('.am-standard-media-card').forEach(card => {
+      card.onclick = () => fetchAlbumDetails(card.dataset.id);
+    });
+
+  } catch (err) {
+    console.error(err);
+    artistViewContent.innerHTML = `<div class="am-error-msg">Failed to load artist details: ${err.message}</div>`;
+  }
+}
+
+
+  // ── Remote Track Load & Decryption Stream ──
   async function loadRemoteTrack(song) {
     if (!prepOverlay) return;
 
     addToRecent(song);
 
     prepOverlay.classList.add('active');
-    prepStatus.textContent = "Downloading Track...";
+    prepStatus.textContent = "Downloading & Decrypting Track...";
 
     try {
-      // 1. Fetch Audio Buffer from AMLL Server (Corrected URL)
-      const audioUrl = `https://spicyamllplayer-api.hf.space/download?song=${song.trackId}`;
+      const audioUrl = `${API_BASE}/download?song=${song.trackId}`;
       const response = await robustFetch(audioUrl, { skipProxy: true });
       const audioBuffer = await response.arrayBuffer();
 
       prepStatus.textContent = "Processing Metadata...";
 
-      // 2. Prepare Metadata
       const metadata = {
         name: song.trackName,
         artist: song.artistName,
         album: song.collectionName,
-        artUrl: song.artworkUrl100.replace('100x100', '600x600'),
+        artUrl: song.artworkUrl100 ? song.artworkUrl100.replace('100x100', '600x600') : 'favicon.svg',
         type: isMP4Buffer(audioBuffer) ? 'audio/mp4' : 'audio/mpeg',
         ttml: '__AUTO_FETCH__',
         amTrackId: song.trackId
       };
 
-      // Enrich with parser data if possible (e.g. if the file has better internal tags)
-      const parsed = await parseAudioMetadata(audioBuffer, song.trackName);
-      if (parsed.title && parsed.title !== song.trackName) metadata.name = parsed.title;
-      if (parsed.artist && parsed.artist !== 'Unknown Artist') metadata.artist = parsed.artist;
-
-      // 3. Clear and Add to Queue
       await clearQueue();
       await addTrackToQueue(audioBuffer, metadata);
 
-      // 4. Go to Player
       setCurrentIndex(0);
       window.location.href = 'player.html';
 
     } catch (err) {
       console.error("Remote load failed:", err);
       prepOverlay.classList.remove('active');
-
-      const serverUrl = `https://spicyamllplayer-api.hf.space/download?song=${song.trackId}`;
-      const msg = `Failed to load track. This often happens if the server is 'sleeping'.\n\nTry clicking OK, then opening this link once to wake it up:\n${serverUrl}\n\nError: ${err.message}`;
-      alert(msg);
+      alert(`Error loading track: ${err.message}`);
     }
   }
 
@@ -790,67 +1064,23 @@ document.addEventListener('DOMContentLoaded', () => {
     prepStatus.textContent = "Fetching metadata...";
     
     try {
-      let song = null;
+      const res = await fetch(`${API_BASE}/song?song=${id}`);
+      if (!res.ok) throw new Error(`Status ${res.status}`);
+      const data = await res.json();
+      
+      const songData = data.data?.[0] || data.results?.songs?.data?.[0];
+      if (!songData) throw new Error("Track ID not found");
 
-      // Try 1: Try Spicy AMLL backend's iTunes lookup
-      try {
-        console.log(`[ID Loader] Trying backend iTunes lookup for ${id}...`);
-        const res = await fetch(`https://spicyamllplayer-api.hf.space/itunes/lookup?id=${id}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.results && data.results.length > 0) {
-            song = data.results[0];
-          }
-        }
-      } catch (err) {
-        console.warn("[ID Loader] Backend iTunes lookup failed:", err);
-      }
+      const attr = songData.attributes || {};
+      const song = {
+        trackId: songData.id,
+        trackName: attr.name,
+        artistName: attr.artistName,
+        collectionName: attr.albumName,
+        artworkUrl100: attr.artwork?.url ? attr.artwork.url.replace('{w}', '100').replace('{h}', '100') : ''
+      };
 
-      // Try 2: Try direct iTunes lookup via robustFetch (with CORS proxy rotation)
-      if (!song) {
-        try {
-          console.log(`[ID Loader] Trying direct iTunes lookup via robustFetch for ${id}...`);
-          const res = await robustFetch(`https://itunes.apple.com/lookup?id=${id}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.results && data.results.length > 0) {
-              song = data.results[0];
-            }
-          }
-        } catch (err) {
-          console.warn("[ID Loader] Direct iTunes lookup via robustFetch failed:", err);
-        }
-      }
-
-      // Try 3: Fallback to Apple Music API catalog search by term
-      if (!song) {
-        try {
-          console.log(`[ID Loader] Trying Apple Music API search fallback for ${id}...`);
-          const res = await fetch(`https://spicyamllplayer-api.hf.space/search?term=${id}&types=songs&limit=1`);
-          if (res.ok) {
-            const data = await res.json();
-            const mappedResults = data.results?.songs?.data?.map(mapSearchAmToItunes) || [];
-            if (mappedResults && mappedResults.length > 0) {
-              song = mappedResults.find(s => s.trackId == id) || mappedResults[0];
-            }
-          }
-        } catch (err) {
-          console.warn("[ID Loader] Apple Music API search fallback failed:", err);
-        }
-      }
-
-      if (song) {
-        // Normalize fields if they are under alternative names
-        song.trackId = song.trackId || song.id;
-        song.trackName = song.trackName || song.name || "Unknown Track";
-        song.artistName = song.artistName || song.artist || "Unknown Artist";
-        song.collectionName = song.collectionName || song.album || "";
-        song.artworkUrl100 = song.artworkUrl100 || song.artUrl || "favicon.svg";
-        
-        loadRemoteTrack(song);
-      } else {
-        throw new Error("Track ID not found in catalog or lookup APIs");
-      }
+      loadRemoteTrack(song);
     } catch (err) {
       console.error("[ID Loader] Failed:", err);
       prepOverlay.classList.remove('active');
@@ -858,17 +1088,105 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Initial load
-  fetchTrending();
+  // ── Context Menu ──
+  function showContextMenu(e, song) {
+    if (!song) return;
+    e.preventDefault();
+    contextMenuTrack = song;
+    songContextMenu.style.left = `${e.clientX}px`;
+    songContextMenu.style.top = `${e.clientY}px`;
+    songContextMenu.classList.remove('hidden');
 
-  // ── Helpers ──
+    const closeMenu = () => {
+      songContextMenu.classList.add('hidden');
+      document.removeEventListener('click', closeMenu);
+    };
+    setTimeout(() => document.addEventListener('click', closeMenu), 10);
+  }
+
+  if (ctxPlay) ctxPlay.onclick = () => { if (contextMenuTrack) loadRemoteTrack(contextMenuTrack); };
+if (ctxViewAlbum) {
+  ctxViewAlbum.onclick = () => {
+    const targetAlbumId = contextMenuTrack?.albumId || contextMenuTrack?.collectionId;
+    if (targetAlbumId) {
+      fetchAlbumDetails(targetAlbumId);
+    } else {
+      alert("Album ID not available for this track.");
+    }
+  };
+}
+
+if (ctxViewArtist) {
+  ctxViewArtist.onclick = () => {
+    const targetArtistId = contextMenuTrack?.artistId;
+    const targetArtistName = contextMenuTrack?.artistName;
+    if (targetArtistId && targetArtistName) {
+      openArtistView(targetArtistId, targetArtistName);
+    }
+  };
+}
+
+
+  if (ctxCopyId) {
+    ctxCopyId.onclick = () => {
+      if (contextMenuTrack) {
+        const id = contextMenuTrack.trackId || contextMenuTrack.id;
+        navigator.clipboard?.writeText(id.toString()).then(() => alert(`Song ID ${id} copied!`));
+      }
+    };
+  }
+
+  // ── TTML Downloader Logic ──
+  if (fetchTtmlBtn) {
+    fetchTtmlBtn.onclick = async () => {
+      const songId = ttmlSongIdInput.value.trim();
+      if (!songId) return;
+
+      fetchTtmlBtn.disabled = true;
+      ttmlStatus.textContent = 'Extracting TTML...';
+
+      try {
+        const metadata = await TTMLDownloader.fetchMetadata(songId);
+        currentFetchedSong = metadata;
+        
+        ttmlPreviewName.textContent = metadata.name;
+        ttmlPreviewArtist.textContent = metadata.artist;
+        ttmlPreviewArt.src = metadata.artUrl;
+
+        const ttml = await TTMLDownloader.fetchTTML(songId);
+        if (!ttml) throw new Error('No TTML lyrics available.');
+
+        currentFetchedTTML = ttml;
+        ttmlCodeBlock.textContent = ttml;
+        ttmlResultContainer.classList.remove('hidden');
+        downloadTtmlBtn.disabled = false;
+        ttmlStatus.textContent = 'Lyrics successfully extracted!';
+      } catch (err) {
+        ttmlStatus.textContent = err.message;
+      } finally {
+        fetchTtmlBtn.disabled = false;
+      }
+    };
+  }
+
+  if (downloadTtmlBtn) {
+    downloadTtmlBtn.onclick = () => {
+      if (!currentFetchedTTML || !currentFetchedSong) return;
+      const filename = `${currentFetchedSong.name} - ${currentFetchedSong.artist}.ttml`;
+      TTMLDownloader.download(filename, currentFetchedTTML);
+    };
+  }
+
+  // ── Helper Utilities ──
   function showError(msg) {
-    errorEl.textContent = msg;
-    setTimeout(() => clearError(), 5000);
+    if (errorEl) {
+      errorEl.textContent = msg;
+      setTimeout(() => clearError(), 5000);
+    }
   }
 
   function clearError() {
-    errorEl.textContent = '';
+    if (errorEl) errorEl.textContent = '';
   }
 
   function readFileAsText(file) {
@@ -892,661 +1210,24 @@ document.addEventListener('DOMContentLoaded', () => {
   function isMP4Buffer(buffer) {
     const view = new DataView(buffer);
     if (view.byteLength < 12) return false;
-    // Standard position: ftyp at offset 4
-    if (view.getUint8(4) === 0x66 && view.getUint8(5) === 0x74 &&
-        view.getUint8(6) === 0x79 && view.getUint8(7) === 0x70) return true;
-    // Some encoders prepend ID3v2 tags before the ftyp atom — scan first 256 bytes
-    const limit = Math.min(256, view.byteLength - 4);
-    for (let i = 4; i < limit; i++) {
-      if (view.getUint8(i) === 0x66 && view.getUint8(i+1) === 0x74 &&
-          view.getUint8(i+2) === 0x79 && view.getUint8(i+3) === 0x70) return true;
-    }
-    return false;
+    return view.getUint8(4) === 0x66 && view.getUint8(5) === 0x74 && view.getUint8(6) === 0x79 && view.getUint8(7) === 0x70;
   }
 
-  // ══════════════════════════════════════════════════
-  // NEW APPLE MUSIC VIEWS (ALBUM, ARTIST) & CONTEXT MENU
-  // ══════════════════════════════════════════════════
-  
-  function showContextMenu(e, song) {
-    e.preventDefault();
-    contextMenuTrack = song;
-    songContextMenu.style.left = `${e.clientX}px`;
-    songContextMenu.style.top = `${e.clientY}px`;
-    songContextMenu.classList.remove('hidden');
-
-    const closeMenu = () => {
-      songContextMenu.classList.add('hidden');
-      document.removeEventListener('click', closeMenu);
-    };
-    setTimeout(() => document.addEventListener('click', closeMenu), 10);
+  function millisToMinutesAndSeconds(millis) {
+    if (!millis) return "0:00";
+    const minutes = Math.floor(millis / 60000);
+    const seconds = ((millis % 60000) / 1000).toFixed(0);
+    return minutes + ":" + (seconds < 10 ? '0' : '') + seconds;
   }
 
-  // Bind Actions
-  ctxPlay.onclick = () => { if (contextMenuTrack) loadRemoteTrack(contextMenuTrack); };
-  ctxViewAlbum.onclick = () => {
-    if (contextMenuTrack && contextMenuTrack.collectionId) {
-      openAlbumView(contextMenuTrack.collectionId, contextMenuTrack.collectionName, contextMenuTrack.artistName, contextMenuTrack.artworkUrl100);
-    }
-  };
-  ctxViewArtist.onclick = () => {
-    if (contextMenuTrack && contextMenuTrack.artistName) {
-      openArtistView(contextMenuTrack.artistId, contextMenuTrack.artistName);
-    }
-  };
-
-  ctxAddPlaylist.onclick = async () => {
-     if (!contextMenuTrack) return;
-     let playlists = await getPlaylists();
-     
-     const renderModalOptions = () => {
-        playlistOptionsList.innerHTML = playlists.map(p => `
-          <div class="playlist-option" data-id="${p.id}">${escapeHTML(p.name)}</div>
-        `).join('') || '<p style="text-align:center; padding:10px; opacity:0.5;">No playlists created yet.</p>';
-        
-        playlistOptionsList.querySelectorAll('.playlist-option').forEach(opt => {
-          opt.onclick = async () => {
-            const pId = parseInt(opt.dataset.id, 10);
-            await addToPlaylistProcess(pId, contextMenuTrack);
-            playlistModal.classList.add('hidden');
-          };
-        });
-     };
-     
-     renderModalOptions();
-     playlistModal.classList.remove('hidden');
-     
-     modalCreatePlaylistBtn.onclick = async () => {
-        const name = prompt("Enter new playlist name:");
-        if (name) {
-           await createPlaylist(name);
-           playlists = await getPlaylists();
-           renderModalOptions(); // rerender list inside modal
-        }
-     };
-  };
-
-  ctxFavorite.onclick = async () => {
-     if (!contextMenuTrack) return;
-     let playlists = await getPlaylists();
-     let favPlaylist = playlists.find(p => p.name === 'Favorites');
-     if (!favPlaylist) {
-       const id = await createPlaylist('Favorites');
-       favPlaylist = { id, name: 'Favorites' };
-     }
-     await addToPlaylistProcess(favPlaylist.id, contextMenuTrack);
-     alert('Added to Favorites!');
-  };
-
-  function copyToClipboard(text) {
-    if (navigator.clipboard && window.isSecureContext) {
-      return navigator.clipboard.writeText(text);
-    }
-    // Fallback for non-secure contexts (HTTP/localhost)
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
-    document.body.appendChild(ta);
-    ta.select();
-    try {
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-      return Promise.resolve();
-    } catch (err) {
-      document.body.removeChild(ta);
-      return Promise.reject(err);
-    }
-  }
-
-  ctxCopyId.onclick = () => {
-    if (contextMenuTrack) {
-      const id = contextMenuTrack.trackId || contextMenuTrack.id;
-      if (id) {
-        copyToClipboard(id.toString())
-          .then(() => {
-            alert(`Song ID ${id} copied to clipboard!`);
-          })
-          .catch(err => {
-            console.error('Failed to copy: ', err);
-          });
-      }
-    }
-  };
-
-  closePlaylistModal.onclick = () => playlistModal.classList.add('hidden');
-
-  async function addToPlaylistProcess(pId, track) {
-     prepOverlay.classList.add('active');
-     prepStatus.textContent = "Saving to Playlist...";
-     try {
-       const audioUrl = `https://spicyamllplayer-api.hf.space/download?song=${track.trackId}`;
-       const response = await robustFetch(audioUrl, { skipProxy: true });
-       const audioBuffer = await response.arrayBuffer();
-       
-       await addTrackToPlaylist(pId, {
-         name: track.trackName,
-         artist: track.artistName,
-         artUrl: track.artworkUrl100.replace('100x100', '600x600'),
-         type: isMP4Buffer(audioBuffer) ? 'audio/mp4' : 'audio/mpeg',
-         ttml: '__AUTO_FETCH__',
-         amTrackId: track.trackId
-       }, audioBuffer);
-       prepOverlay.classList.remove('active');
-     } catch (err) {
-       console.error("Failed to add to playlist:", err);
-       prepOverlay.classList.remove('active');
-       alert("Failed to save track: " + err.message);
-     }
-  }
-
-  // Playlist Page Functionality
-  async function renderPlaylistsPage() {
-     const playlists = await getPlaylists();
-     playlistDetail.classList.add('hidden');
-     playlistsGrid.classList.remove('hidden');
-
-     playlistsGrid.innerHTML = playlists.map(p => `
-       <div class="playlist-card animate-fade" data-id="${p.id}">
-         <div class="playlist-icon">
-           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 10h12v2H4v-2zm0-4h12v2H4V6zm0 8h8v2H4v-2zm10 0v6l5-3-5-3z" /></svg>
-         </div>
-         <h4>${escapeHTML(p.name)}</h4>
-         <button class="am-text-btn delete-playlist" style="margin-top:10px; font-size:0.8rem;" data-id="${p.id}">Delete</button>
-       </div>
-     `).join('');
-
-     playlistsGrid.querySelectorAll('.playlist-card').forEach(card => {
-       card.onclick = (e) => {
-         if (e.target.classList.contains('delete-playlist')) {
-           const id = parseInt(e.target.dataset.id, 10);
-           deletePlaylist(id).then(() => renderPlaylistsPage());
-           return;
-         }
-         const id = parseInt(card.dataset.id, 10);
-         const p = playlists.find(x => x.id === id);
-         showPlaylistDetail(p);
-       };
-     });
-  }
-
-  if (createPlaylistBtn) {
-    createPlaylistBtn.onclick = () => {
-      const name = prompt("Playlist name:");
-      if (name) createPlaylist(name).then(() => renderPlaylistsPage());
-    };
-  }
-
-  if (playlistBackBtn) {
-    playlistBackBtn.onclick = () => renderPlaylistsPage();
-  }
-
-  async function showPlaylistDetail(playlist) {
-     playlistsGrid.classList.add('hidden');
-     playlistDetail.classList.remove('hidden');
-     playlistDetailTitle.textContent = playlist.name;
-     playlistTracksGrid.innerHTML = '<div class="am-loading-msg">Loading tracks...</div>';
-
-     const tracks = await getPlaylistTracks(playlist.id);
-     if (!tracks.length) {
-       playlistTracksGrid.innerHTML = '<div class="am-error-msg">Playlist is empty.</div>';
-     } else {
-       playlistTracksGrid.innerHTML = tracks.map(t => {
-         const safeName = escapeHTML(t.name);
-         const safeArtist = escapeHTML(t.artist);
-         return `
-         <div class="trending-card animate-fade" data-id="${t.id}">
-           <div class="trending-art">
-             <img src="${t.artUrl || 'favicon.svg'}" loading="lazy" alt="${safeName}">
-           </div>
-           <div class="trending-info">
-             <h4>${safeName}</h4>
-             <p>${safeArtist}</p>
-           </div>
-         </div>
-       `;
-       }).join('');
-
-        playlistTracksGrid.querySelectorAll('.trending-card').forEach(card => {
-          card.onclick = async () => {
-            const tid = parseInt(card.dataset.id, 10);
-            const clickedIndex = tracks.findIndex(x => x.id === tid);
-            const clickedTrack = tracks[clickedIndex];
-
-            if (clickedTrack && clickedTrack.buffer) {
-              if (prepOverlay) {
-                prepOverlay.classList.add('active');
-                prepStatus.textContent = "Loading Playlist...";
-              }
-              try {
-                await clearQueue();
-                for (const t of tracks) {
-                  await addTrackToQueue(t.buffer, t);
-                }
-                setCurrentIndex(clickedIndex);
-                window.location.href = 'player.html';
-              } catch (err) {
-                console.error("Failed to load playlist:", err);
-                if (prepOverlay) prepOverlay.classList.remove('active');
-                alert("Error loading playlist: " + err.message);
-              }
-            }
-          };
-        });
-     }
-  }
-
-  // ── Open Album View ──
-  async function openAlbumView(collectionId, collectionName, artistName, artUrl) {
-    listenInitialContent.style.display = 'none';
-    searchSearchResults.classList.add('hidden');
-    artistViewContainer.classList.add('hidden');
-    
-    // Check local album artwork animation
-    let artSrc = artUrl.replace('100x100', '600x600');
-    albumHeader.innerHTML = `
-      <img src="${artSrc}" id="album-view-art" class="am-album-cover">
-      <div class="am-album-details">
-        <h2 class="am-album-title">${escapeHTML(collectionName)}</h2>
-        <div class="am-album-artist">${escapeHTML(artistName)}</div>
-        <div class="am-album-meta">Album • 2024</div>
-        <div class="am-album-desc">Enjoy this high fidelity master release on Spicy AMLL Player. Automatically synchronized with moving UI features.</div>
-        <button class="am-start-btn" id="album-play-btn">Play</button>
-      </div>
-    `;
-
-    albumViewContainer.classList.remove('hidden');
-    albumTracksGrid.innerHTML = '<div class="am-loading-msg" style="padding-top:20px;">Fetching Tracks...</div>';
-    
-    // Attempt Animated Canvas Replacement
-    getAnimatedArtwork(artistName, collectionName, "").then(videoUrl => {
-         if (videoUrl) {
-             const img = document.getElementById('album-view-art');
-             if(img) {
-                 const video = document.createElement('video');
-                 video.src = videoUrl;
-                 video.autoplay = true; video.loop = true; video.muted = true;
-                 video.className = 'am-album-cover';
-                 img.replaceWith(video);
-             }
-         }
-    });
-
-    try {
-      // const data = await itunesFetch(`https://itunes.apple.com/lookup?id=${collectionId}&entity=song`);
-      const res = await fetch(`https://spicyamllplayer-api.hf.space/itunes/lookup?id=${collectionId}&entity=song`);
-      const data = await res.json();
-      const tracks = data.results.filter(r => r.wrapperType === 'track');
-      
-      albumTracksGrid.innerHTML = tracks.map((t, idx) => `
-        <div class="am-track-row animate-fade" data-id="${t.trackId}" style="animation-delay:${idx*30}ms">
-           <div class="am-track-num">${t.trackNumber}</div>
-           <div class="am-track-title">${escapeHTML(t.trackName)}</div>
-           <div class="am-track-duration">${millisToMinutesAndSeconds(t.trackTimeMillis)}</div>
-           <svg class="am-track-more" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-              <path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
-           </svg>
-        </div>
-      `).join('');
-
-      albumTracksGrid.querySelectorAll('.am-track-row').forEach(row => {
-          row.onclick = (e) => {
-              const id = row.dataset.id;
-              const song = tracks.find(s => s.trackId == id);
-              if (song) showContextMenu(e, song);
-          };
-      });
-
-      const playBtn = document.getElementById('album-play-btn');
-      playBtn.onclick = () => {
-         if (tracks.length > 0) loadRemoteTrack(tracks[0]);
-      };
-
-    } catch (err) {
-      console.error(err);
-      albumTracksGrid.innerHTML = `<div class="am-error-msg">Failed to load album tracks.</div>`;
-    }
-  }
-
-  // ── Open Artist View ──
-  async function openArtistView(artistId, artistName) {
-     listenInitialContent.style.display = 'none';
-     searchSearchResults.classList.add('hidden');
-     albumViewContainer.classList.add('hidden');
-     artistViewContainer.classList.remove('hidden');
-
-     artistViewContent.innerHTML = `<div class="am-loading-msg" style="padding-top:40px;">Fetching Artist Profile...</div>`;
-
-     let realArtistId = artistId;
-     if (!realArtistId) {
-        try {
-           const searchRes = await fetch(`https://spicyamllplayer-api.hf.space/search?term=${encodeURIComponent(artistName)}&types=artists&limit=1`);
-           if (searchRes.ok) {
-              const searchData = await searchRes.json();
-              const foundArtist = searchData?.results?.artists?.data?.[0];
-              if (foundArtist) {
-                 realArtistId = foundArtist.id;
-              }
-           }
-        } catch (err) {
-           console.warn("[Artist Lookup] Failed to find artist ID:", err);
-        }
-     }
-
-      try {
-        let songs = [];
-        let albums = [];
-        let latestAlbum = null;
-
-        if (realArtistId) {
-          // Fetch exact songs and albums using our new logic
-          const songsRes = await fetch(`https://spicyamllplayer-api.hf.space/artist/songs?artist=${realArtistId}&limit=10`);
-          if (songsRes.ok) {
-            const songsData = await songsRes.json();
-            songs = songsData.data?.map(mapSearchAmToItunes) || [];
-          }
-
-          const albumsRes = await fetch(`https://spicyamllplayer-api.hf.space/artist/albums?artist=${realArtistId}&limit=10`);
-          if (albumsRes.ok) {
-            const albumsData = await albumsRes.json();
-            albums = albumsData.data?.map(mapSearchAmToItunes) || [];
-            if (albums.length > 0) {
-              // Find latest release based on releaseDate
-              latestAlbum = [...albums].sort((a, b) => new Date(b.releaseDate) - new Date(a.releaseDate))[0];
-            }
-          }
-        }
-
-        // Fallback to fuzzy search if artistId could not be resolved or requests failed
-        if (songs.length === 0) {
-          console.log("[Artist View] Falling back to fuzzy iTunes search...");
-          const res = await fetch(`https://spicyamllplayer-api.hf.space/itunes/search?term=${encodeURIComponent(artistName)}&entity=song&limit=4`);
-          const data = await res.json();
-          songs = data.results || [];
-
-          const albRes = await fetch(`https://spicyamllplayer-api.hf.space/itunes/search?term=${encodeURIComponent(artistName)}&entity=album&limit=10`);
-          const albData = await albRes.json();
-          albums = albData.results || [];
-          latestAlbum = albums[0];
-        }
-
-        const placeholderPhoto = songs[0] ? songs[0].artworkUrl100.replace('100x100', '600x600') : 'favicon.svg';
-        
-        let songsHTML = songs.slice(0, 4).map(s => {
-          const safeName = escapeHTML(s.trackName);
-          return `
-          <div class="am-track-row" data-id="${s.trackId}">
-            <img src="${s.artworkUrl100}" width="40" height="40" style="border-radius:6px; margin-right:15px;">
-            <div class="am-track-title">${safeName} <span style="font-size:0.7rem;color:#777;background:rgba(255,255,255,0.1);padding:2px 4px;border-radius:4px;margin-left:6px;">E</span></div>
-            <svg class="am-track-more" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-               <path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
-            </svg>
-          </div>
-        `;
-        }).join('');
-
-        let albumsHTML = albums.map(album => {
-          const safeName = escapeHTML(album.collectionName);
-          const safeArtist = escapeHTML(album.artistName);
-          return `
-            <div class="album-card animate-fade" data-id="${album.collectionId}" data-name="${safeName}" data-artist="${safeArtist}" data-art="${album.artworkUrl100}">
-              <img src="${album.artworkUrl100.replace('100x100', '300x300')}" class="album-art" loading="lazy">
-              <div class="album-info">
-                <h4>${safeName}</h4>
-                <p>${safeArtist}</p>
-              </div>
-            </div>
-          `;
-        }).join('') || '<p style="color:rgba(255,255,255,0.4)">No albums found.</p>';
-
-        let allSongsHTML = songs.map(s => {
-          const safeName = escapeHTML(s.trackName);
-          return `
-          <div class="am-track-row" data-id="${s.trackId}">
-            <img src="${s.artworkUrl100}" width="40" height="40" style="border-radius:6px; margin-right:15px;">
-            <div class="am-track-title">${safeName} <span style="font-size:0.7rem;color:#777;background:rgba(255,255,255,0.1);padding:2px 4px;border-radius:4px;margin-left:6px;">E</span></div>
-            <svg class="am-track-more" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-               <path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
-            </svg>
-          </div>
-        `;
-        }).join('') || '<p style="color:rgba(255,255,255,0.4)">No songs found.</p>';
-
-        artistViewContent.innerHTML = `
-           <div class="am-artist-header">
-              <img src="${placeholderPhoto}" class="am-artist-image">
-              <div class="am-artist-name-row">
-                  <div class="am-artist-play-btn"><svg viewBox="0 0 24 24" fill="#fff" width="24" height="24"><path d="M8 5v14l11-7z"/></svg></div>
-                  <h2 class="am-artist-name">${escapeHTML(artistName)}</h2>
-              </div>
-           </div>
-           
-           <div class="am-artist-content-grid">
-              <div>
-                 <h3 style="margin-bottom:15px; font-weight:700;">Latest Release</h3>
-                 ${latestAlbum ? `
-                 <div class="am-latest-release-card" data-id="${latestAlbum.collectionId}" data-name="${escapeHTML(latestAlbum.collectionName)}" data-artist="${escapeHTML(latestAlbum.artistName)}" data-art="${latestAlbum.artworkUrl100}">
-                    <img src="${latestAlbum.artworkUrl100.replace('100x100', '300x300')}">
-                    <div style="display:flex; flex-direction:column; justify-content:center;">
-                       <div style="font-size:0.7rem; color:rgba(255,255,255,0.4); text-transform:uppercase; font-weight:700; margin-bottom:4px;">${latestAlbum.releaseDate ? new Date(latestAlbum.releaseDate).getFullYear() : 'Album'}</div>
-                       <div style="font-weight:700; margin-bottom:4px; font-size:1rem;">${escapeHTML(latestAlbum.collectionName)}</div>
-                       <div style="font-size:0.8rem; color:rgba(255,255,255,0.4);">${latestAlbum.trackCount ? latestAlbum.trackCount + ' songs' : ''}</div>
-                    </div>
-                 </div>` : '<p style="color:rgba(255,255,255,0.4)">No recent releases found.</p>'}
-              </div>
-              <div>
-                 <h3 style="margin-bottom:15px; font-weight:700;">Top Songs</h3>
-                 <div class="am-top-songs-list">${songsHTML}</div>
-              </div>
-           </div>
-
-           <div class="artist-albums-section" style="margin-top: 40px;">
-              <h3 style="margin-bottom: 20px; font-weight: 700; font-size: 1.5rem;">Albums</h3>
-              <div class="albums-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px;">
-                  ${albumsHTML}
-              </div>
-           </div>
-
-           <div class="artist-songs-section" style="margin-top: 40px; margin-bottom: 40px;">
-              <h3 style="margin-bottom: 20px; font-weight: 700; font-size: 1.5rem;">All Songs</h3>
-              <div class="am-top-songs-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px;">
-                  ${allSongsHTML}
-              </div>
-           </div>
-        `;
-
-        artistViewContent.querySelectorAll('.am-track-row').forEach(row => {
-           row.onclick = (e) => {
-              const id = row.dataset.id;
-              const song = songs.find(s => s.trackId == id);
-              if (song) showContextMenu(e, song);
-           };
-        });
-
-        const latestReleaseCard = artistViewContent.querySelector('.am-latest-release-card');
-        if (latestReleaseCard) {
-          latestReleaseCard.onclick = () => {
-            const id = latestReleaseCard.dataset.id;
-            const name = latestReleaseCard.dataset.name;
-            const artist = latestReleaseCard.dataset.artist;
-            const art = latestReleaseCard.dataset.art;
-            if (id) {
-              openAlbumView(id, name, artist, art);
-            }
-          };
-        }
-
-        artistViewContent.querySelectorAll('.artist-albums-section .album-card').forEach(card => {
-          card.onclick = () => {
-            const id = card.dataset.id;
-            const name = card.dataset.name;
-            const artist = card.dataset.artist;
-            const art = card.dataset.art;
-            if (id) {
-              openAlbumView(id, name, artist, art);
-            }
-          };
-        });
-
-      } catch (e) {
-        console.error(e);
-        artistViewContent.innerHTML = `<div class="am-error-msg">Failed to load artist profile.</div>`;
-      }
-   }
-
-  async function renderFavoritesPage() {
-     const favoriteGrid = document.getElementById('favorite-tracks-grid');
-     if (!favoriteGrid) return;
-     favoriteGrid.innerHTML = '<div class="am-loading-msg">Loading favorites...</div>';
-
-     const playlists = await getPlaylists();
-     const favPlaylist = playlists.find(p => p.name === 'Favorites');
-     
-     if (!favPlaylist) {
-       favoriteGrid.innerHTML = '<div class="am-error-msg">No favorite songs yet. Start by clicking "Add to Favorites" on a song.</div>';
-       return;
-     }
-
-     const tracks = await getPlaylistTracks(favPlaylist.id);
-     if (!tracks.length) {
-       favoriteGrid.innerHTML = '<div class="am-error-msg">No favorite songs yet.</div>';
-     } else {
-       renderTrackGrid(favoriteGrid, tracks);
-     }
-  }
-
-  async function renderRecentPage() {
-     const recentGrid = document.getElementById('recent-tracks-grid');
-     if (!recentGrid) return;
-     
-     const recentTracks = JSON.parse(localStorage.getItem('spicy_recent_tracks') || '[]');
-     if (!recentTracks.length) {
-       recentGrid.innerHTML = '<div class="am-error-msg">No recently played tracks.</div>';
-     } else {
-       renderTrackGrid(recentGrid, recentTracks, true);
-     }
-  }
-
-  function renderTrackGrid(container, tracks, isRemote = false) {
-     container.innerHTML = tracks.map(t => {
-       const safeName = escapeHTML(t.name || t.trackName);
-       const safeArtist = escapeHTML(t.artist || t.artistName);
-       return `
-       <div class="trending-card animate-fade" data-id="${t.id || t.trackId}">
-         <div class="trending-art">
-           <img src="${t.artUrl || t.artworkUrl100 || 'favicon.svg'}" loading="lazy" alt="${safeName}">
-         </div>
-         <div class="trending-info">
-           <h4>${safeName}</h4>
-           <p>${safeArtist}</p>
-         </div>
-       </div>
-     `;
-     }).join('');
-
-      container.querySelectorAll('.trending-card').forEach(card => {
-        card.onclick = async () => {
-          const tid = card.dataset.id;
-          const clickedIndex = tracks.findIndex(x => (x.id || x.trackId) == tid);
-          const clickedTrack = tracks[clickedIndex];
-
-          if (clickedTrack && clickedTrack.buffer) {
-            if (prepOverlay) {
-              prepOverlay.classList.add('active');
-              prepStatus.textContent = "Loading Tracks...";
-            }
-            try {
-              await clearQueue();
-              for (const track of tracks) {
-                await addTrackToQueue(track.buffer, track);
-              }
-              setCurrentIndex(clickedIndex);
-              window.location.href = 'player.html';
-            } catch (err) {
-              console.error("Failed to load tracks:", err);
-              if (prepOverlay) prepOverlay.classList.remove('active');
-              alert("Error loading tracks: " + err.message);
-            }
-          } else if (clickedTrack) {
-            if (prepOverlay) {
-              prepOverlay.classList.add('active');
-              prepStatus.textContent = "Loading Recently Played...";
-            }
-            try {
-              await clearQueue();
-              for (const track of tracks) {
-                const metadata = {
-                  name: track.trackName || track.name,
-                  artist: track.artistName || track.artist || 'Unknown Artist',
-                  album: track.collectionName || track.album || '',
-                  artUrl: (track.artworkUrl100 || track.artUrl || '').replace('100x100', '600x600'),
-                  type: 'audio/mpeg',
-                  ttml: '__AUTO_FETCH__',
-                  amTrackId: track.trackId || track.id
-                };
-                await addTrackToQueue(null, metadata);
-              }
-              setCurrentIndex(clickedIndex);
-              window.location.href = 'player.html';
-            } catch (err) {
-              console.error("Failed to load recently played tracks:", err);
-              if (prepOverlay) prepOverlay.classList.remove('active');
-              alert("Error loading recently played: " + err.message);
-            }
-          }
-        };
-      });
-  }
-
-  // Tracking recent tracks
   function addToRecent(track) {
     let recent = JSON.parse(localStorage.getItem('spicy_recent_tracks') || '[]');
-    // Avoid duplicates
     recent = recent.filter(t => (t.trackId || t.id) !== (track.trackId || track.id));
     recent.unshift(track);
     if (recent.length > 20) recent.pop();
     localStorage.setItem('spicy_recent_tracks', JSON.stringify(recent));
   }
 
-  function millisToMinutesAndSeconds(millis) {
-     if(!millis) return "0:00";
-     var minutes = Math.floor(millis / 60000);
-     var seconds = ((millis % 60000) / 1000).toFixed(0);
-     return minutes + ":" + (seconds < 10 ? '0' : '') + seconds;
-  }
-
-  // ── URL ID Detection (Quick Init) ──
-  function extractSongId() {
-    // 1. Check query parameters (e.g. ?id=1738734057 or ?song=1738734057)
-    const queryParams = new URLSearchParams(window.location.search);
-    const qId = queryParams.get('id') || queryParams.get('song');
-    if (qId && /^\d+$/.test(qId.trim())) {
-      return qId.trim();
-    }
-
-    // 2. Check hash (e.g. #1738734057 or #/song/1738734057 or #song/1738734057)
-    const hash = window.location.hash;
-    if (hash) {
-      const hashMatch = hash.match(/\b\d{8,15}\b/);
-      if (hashMatch) {
-        return hashMatch[0];
-      }
-    }
-
-    // 3. Check pathname (e.g. /1738734057 or /song/1738734057)
-    const pathMatch = window.location.pathname.match(/\b\d{8,15}\b/);
-    if (pathMatch) {
-      return pathMatch[0];
-    }
-
-    return null;
-  }
-
-  const potentialId = extractSongId();
-
-  if (potentialId) {
-     console.log("[AutoInit] Detected potential song ID in URL:", potentialId);
-     // Use a small delay to ensure all UI elements are ready
-     setTimeout(() => loadTrackById(potentialId), 500);
-  }
-
+  // Initial Landing View Load
+  loadLandingView();
 });
