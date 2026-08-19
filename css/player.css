@@ -1761,7 +1761,7 @@ body.is-rendering .NowBar {
     height: calc(100dvh - (112px + env(safe-area-inset-top, 12px) + 32dvh)) !important;
     padding: 0 !important;
     margin: 0 !important;
-    z-index: 150 !important;
+    z-index: 50 !important;
     pointer-events: auto !important;
     overflow: hidden !important;
     mask-image: linear-gradient(to bottom, transparent 0%, black 5%, black 88%, transparent 100%) !important;

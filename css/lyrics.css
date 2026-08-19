@@ -92,13 +92,14 @@
 #SpicyLyricsPage .LyricsContainer .LyricsContent .line {
   --font-size: var(--DefaultLyricsSize);
   display: block;
-  text-align: center;
+  text-align: left !important;
   opacity: 0.35;
   filter: blur(var(--blur-amount, 0px));
   transform: translate3d(0, var(--ty, 0px), 0);
   scale: 0.98;
   transform-origin: left center;
-  margin-bottom: 25px !important;
+  margin-bottom: clamp(14px, 0.45em, 32px) !important;
+  padding: 0.25em 0 !important;
   transition:
     scale 0.4s cubic-bezier(0.25, 1, 0.5, 1),
     opacity 0.4s cubic-bezier(0.25, 1, 0.5, 1),
@@ -106,8 +107,9 @@
   font-size: var(--font-size) !important;
 }
 
-#SpicyLyricsPage .LyricsContainer .LyricsContent .line:hover {
-  filter: blur(0px) !important;
+#SpicyLyricsPage .LyricsContainer .LyricsContent:has(.line:hover) .line {
+  filter: none !important;
+  transition: filter 0s !important;
 }
 
 #SpicyLyricsPage .LyricsContainer .LyricsContent .line .word,
@@ -343,7 +345,8 @@
    ═══════════════════════════════════════════════ */
 
 #SpicyLyricsPage .LyricsContainer .LyricsContent .line.OppositeAligned {
-  text-align: end;
+  text-align: right !important;
+  transform-origin: right center !important;
 }
 
 /* Word spacing for OppositeAligned is inherited from the base ::after rule (margin-inline-end: 0.3ch) */
@@ -491,19 +494,63 @@
 
 #SpicyLyricsPage .LyricsContainer .LyricsContent .line.bg-line .word,
 #SpicyLyricsPage .LyricsContainer .LyricsContent .line.bg-line .letterGroup .letter {
-  --gradient-alpha: 0.6;
-  --gradient-alpha-end: 0.3;
+  --gradient-alpha: 0.55 !important;
+  --gradient-alpha-end: 0.55 !important;
+}
+
+#SpicyLyricsPage .LyricsContainer .LyricsContent .line.bg-line .word.active,
+#SpicyLyricsPage .LyricsContainer .LyricsContent .line.bg-line .word.sung,
+#SpicyLyricsPage .LyricsContainer .LyricsContent .line.bg-line .letterGroup .letter.active,
+#SpicyLyricsPage .LyricsContainer .LyricsContent .line.bg-line .letterGroup .letter.sung {
+  --gradient-alpha: 1 !important;
+  --gradient-alpha-end: 1 !important;
+}
+
+#SpicyLyricsPage .LyricsContainer .LyricsContent .line .bg-wrapper {
+  display: block;
+  width: 100%;
+  max-height: 0px;
+  opacity: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+  transform-origin: left top;
+  transform: translateY(-8px) scale(0.92);
+  transition:
+    max-height 0.45s cubic-bezier(0.25, 1, 0.5, 1),
+    opacity 0.35s cubic-bezier(0.25, 1, 0.5, 1),
+    transform 0.45s cubic-bezier(0.25, 1, 0.5, 1),
+    visibility 0.45s step-end;
+}
+
+#SpicyLyricsPage .LyricsContainer .LyricsContent .line.Active .bg-wrapper,
+#SpicyLyricsPage .LyricsContainer .LyricsContent .line .bg-wrapper.Active {
+  max-height: 5em;
+  opacity: 0.75;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0px) scale(1);
+  transition:
+    max-height 0.45s cubic-bezier(0.25, 1, 0.5, 1),
+    opacity 0.35s cubic-bezier(0.25, 1, 0.5, 1),
+    transform 0.45s cubic-bezier(0.25, 1, 0.5, 1),
+    visibility 0s step-start;
 }
 
 #SpicyLyricsPage .LyricsContainer .LyricsContent .line.bg-line {
-  margin: -1cqw 1cqw 1cqw !important;
+  display: block !important;
+  width: 100% !important;
+  margin: 0.3em 0 0 0 !important;
+  padding: 0 !important;
+  text-align: inherit !important;
+  transform: none !important;
 }
 
 #SpicyLyricsPage .LyricsContainer .LyricsContent .line.bg-line,
 #SpicyLyricsPage .LyricsContainer .LyricsContent .line.bg-line .word,
 #SpicyLyricsPage .LyricsContainer .LyricsContent .line.bg-line .letterGroup,
 #SpicyLyricsPage .LyricsContainer .LyricsContent .line.bg-line .letterGroup .letter {
-  --font-size: calc(var(--DefaultLyricsSize) * 0.75);
+  --font-size: calc(var(--DefaultLyricsSize) * 0.72);
   font-size: var(--font-size) !important;
   font-weight: 600 !important;
 }

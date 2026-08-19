@@ -503,8 +503,11 @@ export function applySyllableLyrics(data, lyricsContentEl) {
       }
     });
 
-    // Background vocals
+    // Background vocals (wrapped inside parent line div, matching AMLL LyricLineGroup)
     if (line.Background) {
+      const bgWrapper = document.createElement("div");
+      bgWrapper.classList.add("bg-wrapper");
+
       line.Background.forEach(bg => {
         const bgLine = document.createElement("div");
         bgLine.classList.add("line", "bg-line");
@@ -512,6 +515,8 @@ export function applySyllableLyrics(data, lyricsContentEl) {
 
         LyricsObject.Types.Syllable.Lines.push({
           HTMLElement: bgLine,
+          ParentLineElement: lineElem,
+          WrapperElement: bgWrapper,
           StartTime: convertTime(bg.StartTime),
           EndTime: convertTime(bg.EndTime),
           TotalTime: convertTime(bg.EndTime) - convertTime(bg.StartTime),
@@ -521,7 +526,7 @@ export function applySyllableLyrics(data, lyricsContentEl) {
         setWordArrayInCurrentLine();
 
         if (line.OppositeAligned) bgLine.classList.add("OppositeAligned");
-        container.appendChild(bgLine);
+        bgWrapper.appendChild(bgLine);
 
         let currentBGWordGroup = null;
 
@@ -578,25 +583,20 @@ export function applySyllableLyrics(data, lyricsContentEl) {
         bgSyllablesToRender.forEach((bw, bI, bA) => {
           const rawBgText = ((showRomanized && bw.RomanizedText !== undefined) ? bw.RomanizedText : bw.Text) ?? "";
           const displayBgText = settingsManager.get("trimSyllableSpaces") ? rawBgText.trim() : rawBgText;
-          const totalDuration = convertTime(bw.EndTime) - convertTime(bw.StartTime);
           const isEmphasized = bgWordEmphasisMask[bI];
+          const info = bgSyllableWordInfo[bI];
+          const totalDuration = convertTime(bw.EndTime) - convertTime(bw.StartTime);
 
           let bwE;
           let lettersData = null;
 
-          if (isEmphasized) {
-            bwE = document.createElement("div");
-            bwE.classList.add("letterGroup");
-            if (bw.IsPartOfWord) {
-              bwE.classList.add("PartOfWord");
-            }
+          if (isEmphasized && info && bI === info.wStart) {
+            bwE = document.createElement("span");
 
-            const info = bgSyllableWordInfo[bI];
             let letterOffsetInWord = 0;
             for (let sIdx = info.wStart; sIdx < bI; sIdx++) {
-              const s = bA[sIdx];
-              const sRaw = ((showRomanized && s.RomanizedText !== undefined) ? s.RomanizedText : s.Text) ?? "";
-              const sDisplay = settingsManager.get("trimSyllableSpaces") ? sRaw.trim() : sRaw;
+              const sText = bgSyllablesToRender[sIdx].Text ?? "";
+              const sDisplay = settingsManager.get("trimSyllableSpaces") ? sText.trim() : sText;
               letterOffsetInWord += transformText(sDisplay).replace(/\s/g, "").length;
             }
 
@@ -623,10 +623,6 @@ export function applySyllableLyrics(data, lyricsContentEl) {
 
               return {
                 HTMLElement: letterEl,
-                StartTime: lStart,
-                EndTime: lEnd,
-                TotalTime: letterDuration,
-                Emphasis: true,
                 BGLetter: true,
                 WordStartTime: info.wordStartTime,
                 WordEndTime: info.wordEndTime,
@@ -717,6 +713,8 @@ export function applySyllableLyrics(data, lyricsContentEl) {
           if (!bw.IsPartOfWord && prevBG?.IsPartOfWord) currentBGWordGroup = null;
         });
       });
+
+      lineElem.appendChild(bgWrapper);
     }
 
     // Interlude dots between lines

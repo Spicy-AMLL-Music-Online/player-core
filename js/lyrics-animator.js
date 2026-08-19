@@ -153,6 +153,7 @@ function tickPerLineY(now) {
 
   for (let i = 0; i < arr.length; i++) {
     const line = arr[i];
+    if (line.BGLine) continue;
     const spring = line._posYSpring;
     if (!spring) continue;
 
@@ -231,7 +232,7 @@ function setLineAnimTargets(arr, activeIndex) {
   for (let i = 0; i < arr.length; i++) {
     const line = arr[i];
     const el = line.HTMLElement;
-    if (!el) continue;
+    if (!el || line.BGLine) continue;
 
     line._lineIndex = i;
 
@@ -255,18 +256,31 @@ function setLineAnimTargets(arr, activeIndex) {
       }
     }
 
-    // Blur amount
-    const distFromActive = Math.abs(i - activeIndex);
-    const isVisible = distFromActive <= visibleRange;
-    let blurDist = i - activeIndex;
-    if (line.BGLine || line.DotLine) {
-      for (let p = i - 1; p >= 0; p--) {
-        if (!arr[p].BGLine && !arr[p].DotLine) { blurDist = p - activeIndex; break; }
+    // AMLL Blur calculation matching base/index.ts resolveBlurLevel
+    const lineBlurEnabled = window.spicySettingsManager?.get('lineBlur');
+    let blurPx = 0;
+    if (lineBlurEnabled !== false) {
+      const isFocused = (i === activeIndex);
+      if (isFocused) {
+        blurPx = 0;
+      } else {
+        let effectiveIdx = i;
+        if (line.BGLine || line.DotLine) {
+          for (let p = i - 1; p >= 0; p--) {
+            if (!arr[p].BGLine && !arr[p].DotLine) { effectiveIdx = p; break; }
+          }
+        }
+        const distance = effectiveIdx < activeIndex
+          ? Math.abs(activeIndex - effectiveIdx) + 1
+          : Math.abs(effectiveIdx - activeIndex);
+
+        const isNarrow = checkIsMobile();
+        const level = 1 + distance;
+        const rawBlur = isNarrow ? level * 0.8 : level;
+        blurPx = Math.min(5, Math.max(1.2, rawBlur));
       }
     }
-    const lineBlurEnabled = window.spicySettingsManager?.get('lineBlur');
-    const blur = blurDist === 0 ? 0 : Math.min(Math.abs(blurDist) * 2, 8);
-    el.style.setProperty('--blur-amount', isVisible && lineBlurEnabled ? `${blur}px` : '0px');
+    el.style.setProperty('--blur-amount', `${blurPx.toFixed(1)}px`);
 
     line._baseY = targetTy;
   }

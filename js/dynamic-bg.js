@@ -113,6 +113,10 @@ export async function applyLegacyBackground(bgContainer, img) {
 
   await loadSource();
 
+  requestAnimationFrame(() => {
+    bgContainer.classList.add('loaded', 'active');
+  });
+
   if (img instanceof HTMLVideoElement) {
     const updateFrame = () => {
       if (!_dybg) return;
@@ -131,6 +135,10 @@ export async function applyLegacyBackground(bgContainer, img) {
 }
 
 export function stopKawarp() {
+  const bgContainer = document.querySelector('.spicy-dynamic-bg');
+  if (bgContainer) {
+    bgContainer.classList.remove('loaded', 'active');
+  }
   if (_videoUpdateTimer) {
     clearTimeout(_videoUpdateTimer);
     _videoUpdateTimer = null;
