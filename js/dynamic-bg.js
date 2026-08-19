@@ -1,9 +1,9 @@
-import Dybg from 'https://nurislamaibekuly.github.io/dybg/dybg.js';
+import dybg from 'https://nurislamaibekuly.github.io/dybg/dybg.js';
 
 let _dybg = null;
 let _videoUpdateTimer = null;
 
-// Hidden canvas for frame capture (reused for video)
+// Hidden canvas for frame capture fallback
 const _sourceCanvas = document.createElement('canvas');
 const _sourceCtx = _sourceCanvas.getContext('2d', { alpha: false });
 _sourceCanvas.width = 128;
@@ -70,36 +70,44 @@ export async function applyLegacyBackground(bgContainer, img) {
   bgContainer.innerHTML = "";
   bgContainer.className = "spicy-dynamic-bg";
 
-  _dybg = new Dybg({
-    container: bgContainer,
-    blur: 100,
-    layers: 3,
-    speed: 0.8,
-    twist: 1,
-  });
+  // Create canvas matching index.html (#bgCanvas)
+  const canvas = document.createElement('canvas');
+  canvas.className = "spicy-dybg-canvas";
+  canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;';
+  bgContainer.appendChild(canvas);
 
-  if (_dybg._outCanvas) _dybg._outCanvas.style.filter = 'none';
-  if (_dybg._fbCanvas) _dybg._fbCanvas.style.filter = 'none';
+  try {
+    _dybg = new dybg(canvas);
+  } catch (e) {
+    console.error("Failed to initialize dybg:", e);
+    return;
+  }
+
+  // Configure parameters for active fluid animation
+  if (typeof _dybg.setFlowSpeed === 'function') {
+    _dybg.setFlowSpeed(0.8);
+  }
+  if (typeof _dybg.setRenderScale === 'function') {
+    _dybg.setRenderScale(0.5);
+  }
+  if (typeof _dybg.resume === 'function') {
+    _dybg.resume();
+  } else if (typeof _dybg.play === 'function') {
+    _dybg.play();
+  }
 
   const loadSource = async () => {
     if (!_dybg) return;
-    if (img instanceof HTMLVideoElement) {
-      if (img.readyState >= 2 && img.videoWidth > 0 && img.videoHeight > 0) {
-        _sourceCanvas.width = img.videoWidth;
-        _sourceCanvas.height = img.videoHeight;
-        _sourceCtx.drawImage(img, 0, 0, _sourceCanvas.width, _sourceCanvas.height);
-        _sourceCanvas.toBlob((blob) => {
-          if (_dybg) _dybg.load(blob);
-        }, 'image/jpeg', 0.5);
-      }
-    } else if (typeof img === 'string') {
-      try {
+    try {
+      if (typeof _dybg.setAlbum === 'function') {
+        await _dybg.setAlbum(img, img instanceof HTMLVideoElement);
+      } else if (typeof _dybg.setAlbumImage === 'function') {
+        await _dybg.setAlbumImage(img);
+      } else if (typeof _dybg.load === 'function') {
         await _dybg.load(img);
-      } catch (err) {
-        console.warn("Dybg failed to load image URL:", img, err);
       }
-    } else if (img instanceof HTMLImageElement) {
-      _dybg.load(img);
+    } catch (err) {
+      console.warn("dybg setAlbum failed:", img, err);
     }
   };
 
@@ -109,19 +117,16 @@ export async function applyLegacyBackground(bgContainer, img) {
     const updateFrame = () => {
       if (!_dybg) return;
       if (img.readyState >= 2 && img.videoWidth > 0 && img.videoHeight > 0) {
-        if (_sourceCanvas.width !== img.videoWidth || _sourceCanvas.height !== img.videoHeight) {
-          _sourceCanvas.width = img.videoWidth;
-          _sourceCanvas.height = img.videoHeight;
+        if (typeof _dybg.setAlbum === 'function') {
+          _dybg.setAlbum(img, true);
+        } else if (typeof _dybg.setAlbumImage === 'function') {
+          _dybg.setAlbumImage(img);
         }
-        _sourceCtx.drawImage(img, 0, 0, _sourceCanvas.width, _sourceCanvas.height);
-        _sourceCanvas.toBlob((blob) => {
-          if (_dybg) _dybg.load(blob);
-        }, 'image/jpeg', 0.5);
       }
-      _videoUpdateTimer = setTimeout(updateFrame, 100);
+      _videoUpdateTimer = setTimeout(updateFrame, 200);
     };
 
-    _videoUpdateTimer = setTimeout(updateFrame, 100);
+    _videoUpdateTimer = setTimeout(updateFrame, 200);
   }
 }
 
@@ -132,9 +137,13 @@ export function stopKawarp() {
   }
   if (_dybg) {
     try {
-      _dybg.destroy();
+      if (typeof _dybg.dispose === 'function') {
+        _dybg.dispose();
+      } else if (typeof _dybg.destroy === 'function') {
+        _dybg.destroy();
+      }
     } catch (e) {
-      console.warn("[Dybg] Error disposing:", e);
+      console.warn("[dybg] Error disposing:", e);
     }
     _dybg = null;
   }
@@ -143,9 +152,15 @@ export function stopKawarp() {
 export function setKawarpPlaybackState(isPlaying) {
   if (_dybg) {
     if (isPlaying) {
-      _dybg.play();
+      if (typeof _dybg.resume === 'function') {
+        _dybg.resume();
+      } else if (typeof _dybg.play === 'function') {
+        _dybg.play();
+      }
     } else {
-      _dybg.pause();
+      if (typeof _dybg.pause === 'function') {
+        _dybg.pause();
+      }
     }
   }
 }

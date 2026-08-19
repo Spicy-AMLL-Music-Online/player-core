@@ -106,6 +106,10 @@
   font-size: var(--font-size) !important;
 }
 
+#SpicyLyricsPage .LyricsContainer .LyricsContent .line:hover {
+  filter: blur(0px) !important;
+}
+
 #SpicyLyricsPage .LyricsContainer .LyricsContent .line .word,
 #SpicyLyricsPage .LyricsContainer .LyricsContent .line .letter,
 #SpicyLyricsPage .LyricsContainer .LyricsContent .line {

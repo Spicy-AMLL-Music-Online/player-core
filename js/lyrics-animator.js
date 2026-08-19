@@ -506,7 +506,7 @@ function animateSyllable(position, deltaTime) {
   const isAML = settingsManager.get("amlAnimation");
   const isAML_lyrics = settingsManager.get("amlLyricsAnimations");
 
-  // Advance scroll focus: at half-gap for gaps > 0.5s, or immediately on sung
+  // Advance scroll focus: when line is done singing AND free space gap > 1 second (1000ms)
   let scrollIdx = scrollActiveIdx;
   if ((isSimpleMode || isAML || isAML_lyrics) && scrollActiveIdx !== -1) {
     let nextIdx = -1;
@@ -517,10 +517,17 @@ function animateSyllable(position, deltaTime) {
       const curLineEnd = arr[scrollActiveIdx].EndTime;
       const nextLineStart = arr[nextIdx].StartTime;
       const gap = nextLineStart - curLineEnd;
-      if (gap > 800 && position > curLineEnd + gap * 0.2) {
-        scrollIdx = nextIdx;
-      } else if (gap <= 800 && position > curLineEnd) {
-        scrollIdx = nextIdx;
+
+      if (gap > 1000) {
+        // Line is done singing and free space gap > 1s -> advance immediately on curLineEnd
+        if (position >= curLineEnd) {
+          scrollIdx = nextIdx;
+        }
+      } else {
+        // Gap <= 1s -> advance when next line starts
+        if (position >= nextLineStart) {
+          scrollIdx = nextIdx;
+        }
       }
     }
   }
@@ -1106,7 +1113,7 @@ function animateLine(position, deltaTime) {
     }
   }
 
-  // Advance scroll focus: at half-gap for gaps > 0.5s, or immediately on sung
+  // Advance scroll focus: when line is done singing AND free space gap > 1 second (1000ms)
   let scrollIdx = scrollActiveIdx;
   if ((isSimpleMode || isAML) && scrollActiveIdx !== -1) {
     let nextIdx = -1;
@@ -1117,10 +1124,17 @@ function animateLine(position, deltaTime) {
       const curLineEnd = arr[scrollActiveIdx].EndTime;
       const nextLineStart = arr[nextIdx].StartTime;
       const gap = nextLineStart - curLineEnd;
-      if (gap > 800 && position > curLineEnd + gap * 0.2) {
-        scrollIdx = nextIdx;
-      } else if (gap <= 800 && position > curLineEnd) {
-        scrollIdx = nextIdx;
+
+      if (gap > 1000) {
+        // Line is done singing and free space gap > 1s -> advance immediately on curLineEnd
+        if (position >= curLineEnd) {
+          scrollIdx = nextIdx;
+        }
+      } else {
+        // Gap <= 1s -> advance when next line starts
+        if (position >= nextLineStart) {
+          scrollIdx = nextIdx;
+        }
       }
     }
   }
