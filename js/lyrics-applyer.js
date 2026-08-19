@@ -1208,6 +1208,9 @@ function createMusicalLine(container, startTime, endTime, oppositeAligned, lyric
   const dotGroup = document.createElement("div");
   dotGroup.classList.add("dotGroup");
 
+  lineData._dotGroup = dotGroup;
+  lineData._dots = [];
+
   const dotTime = totalTime / 3;
   const ci = lyricsType === "Syllable"
     ? LyricsObject.Types.Syllable.Lines.length - 1
@@ -1231,6 +1234,7 @@ function createMusicalLine(container, startTime, endTime, oppositeAligned, lyric
       });
     }
     dotGroup.appendChild(dot);
+    lineData._dots.push(dot);
   }
 
   musicalLine.appendChild(dotGroup);

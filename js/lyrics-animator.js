@@ -139,6 +139,9 @@ let _perLineArr = null;
 let _perLineRafId = null;
 let _perLineLastTime = 0;
 
+// AMLL Specs.deselectedTransform — non-selected lines render at 0.98 scale.
+const DEFAULT_LINE_SCALE = 0.98;
+
 /**
  * Per-line spring RAF tick (port of AMLL DomLyricPlayer update loop).
  */
@@ -155,14 +158,21 @@ function tickPerLineY(now) {
     const line = arr[i];
     if (line.BGLine) continue;
     const spring = line._posYSpring;
-    if (!spring) continue;
+    const el = line.HTMLElement;
+    if (!spring || !el) continue;
 
     spring.update(dt);
-    const el = line.HTMLElement;
-    if (el) el.style.setProperty('--ty', `${spring.getCurrentPosition().toFixed(1)}px`);
-
+    el.style.setProperty('--ty', `${spring.getCurrentPosition().toFixed(1)}px`);
     if (!spring.arrived()) {
       anyActive = true;
+    }
+
+    if (line._scaleSpring) {
+      line._scaleSpring.update(dt);
+      el.style.setProperty('--line-scale', `${line._scaleSpring.getCurrentPosition().toFixed(4)}`);
+      if (!line._scaleSpring.arrived()) {
+        anyActive = true;
+      }
     }
   }
 
@@ -171,8 +181,12 @@ function tickPerLineY(now) {
   } else {
     for (let i = 0; i < arr.length; i++) {
       const line = arr[i];
+      if (line.BGLine) continue;
       if (line._posYSpring && line.HTMLElement) {
         line.HTMLElement.style.setProperty('--ty', `${line._posYSpring.getCurrentPosition().toFixed(1)}px`);
+      }
+      if (line._scaleSpring && line.HTMLElement) {
+        line.HTMLElement.style.setProperty('--line-scale', `${line._scaleSpring.getCurrentPosition().toFixed(4)}`);
       }
     }
     _perLineRafId = null;
@@ -245,6 +259,16 @@ function setLineAnimTargets(arr, activeIndex) {
     line._posYSpring.updateParams(springPolicy);
     line._posYSpring.setTargetPosition(targetTy, delay);
 
+    // AMLL-style spring-driven scale: current line full size, others 0.98
+    const activeScale = arr === LyricsObject.Types.Line.Lines ? 1.05 : 1;
+    const scaleGoal = i === activeIndex ? activeScale : DEFAULT_LINE_SCALE;
+    if (!line._scaleSpring) {
+      line._scaleSpring = new Spring(scaleGoal, 140, 22, 1);
+      line._scaleSpring.SetGoal(scaleGoal, true);
+    } else {
+      line._scaleSpring.SetGoal(scaleGoal);
+    }
+
     // AMLL stagger delay step: ONLY accumulate delay for lines visible on-screen (AMLL line 835)
     const lineH = el.offsetHeight || 60;
     const curPos = targetFocalTop + (el.offsetTop - activeOffsetTop);
@@ -262,6 +286,9 @@ function setLineAnimTargets(arr, activeIndex) {
     if (lineBlurEnabled !== false) {
       const isFocused = (i === activeIndex);
       if (isFocused) {
+        blurPx = 0;
+      } else if (line.BGLine || line.DotLine) {
+        // AMLL: interlude dots / bg vocal lines are never blurred
         blurPx = 0;
       } else {
         let effectiveIdx = i;
@@ -299,6 +326,77 @@ function easeSinOut(x) {
 
 function clamp01(x) {
   return x < 0 ? 0 : x > 1 ? 1 : x;
+}
+
+// ── Interlude dots (AMLL dom/interlude-dots.ts, ported) ──
+
+// End-phase shrink with overshoot bounce
+function easeInOutBack(x) {
+  const c1 = 1.70158;
+  const c2 = c1 * 1.525;
+  return x < 0.5
+    ? ((2 * x) ** 2 * ((c2 + 1) * 2 * x - c2)) / 2
+    : ((2 * x - 2) ** 2 * ((c2 + 1) * (x * 2 - 2) + c2) + 2) / 2;
+}
+
+// Entrance switch: fast start, exponential convergence
+function easeOutExpo(x) {
+  return x === 1 ? 1 : 1 - 2 ** (-10 * x);
+}
+
+const TARGET_BREATHE_DURATION = 4500;
+
+// AMLL interlude dots: breathe (sine ±5%), light the 3 dots sequentially,
+// zoom in on entry (easeOutExpo, fade-in 0.5–1s) and shrink+hide on exit
+// (easeInOutBack bounce, fade out last 375ms).
+function advanceInterludeDots(line, position) {
+  const group = line._dotGroup;
+  const dots = line._dots;
+  if (!group || !dots || dots.length < 3) return;
+
+  const duration = line.EndTime - line.StartTime;
+  if (duration <= 0) return;
+  const currentDuration = position - line.StartTime;
+
+  if (currentDuration < 0 || currentDuration >= duration) {
+    setStyleIfChanged(group, 'scale', '0');
+    setStyleIfChanged(group, 'opacity', '0');
+    for (let i = 0; i < dots.length; i++) setStyleIfChanged(dots[i], 'opacity', '0');
+    return;
+  }
+
+  const breatheDuration = duration / Math.ceil(duration / TARGET_BREATHE_DURATION);
+  let scale = 1;
+  let globalOpacity = 1;
+
+  // Sine breathing around baseline, ±5%
+  scale *= Math.sin(1.5 * Math.PI - (currentDuration / breatheDuration) * 2 * Math.PI) / 20 + 1;
+
+  // Entrance zoom (first 2s) + fade-in (0.5–1s)
+  if (currentDuration < 2000) scale *= easeOutExpo(currentDuration / 2000);
+  if (currentDuration < 500) globalOpacity = 0;
+  else if (currentDuration < 1000) globalOpacity *= (currentDuration - 500) / 500;
+
+  // Exit: shrink with bounce (last 750ms), fade out (last 375ms)
+  const remaining = duration - currentDuration;
+  if (remaining < 750) scale *= 1 - easeInOutBack((750 - remaining) / 750 / 2);
+  if (remaining < 375) globalOpacity *= clamp01(remaining / 375);
+
+  const dotsDuration = Math.max(0, duration - 750);
+  scale = Math.max(0, scale) * 0.85;
+
+  setStyleIfChanged(group, 'scale', scale.toFixed(4));
+  setStyleIfChanged(group, 'opacity', globalOpacity.toFixed(3));
+
+  // Each dot lights up in sequence, holding 0.25 minimum brightness
+  for (let i = 0; i < dots.length; i++) {
+    let dotOpacity = 0.25;
+    if (dotsDuration > 0) {
+      const xi = ((currentDuration - (dotsDuration / 3) * i) * 3) / dotsDuration * 0.75;
+      dotOpacity = Math.min(1, Math.max(0.25, xi));
+    }
+    setStyleIfChanged(dots[i], 'opacity', clamp01(globalOpacity * dotOpacity).toFixed(3));
+  }
 }
 
 // AMLL dom/lyric-group.ts bgSlideY spring, ported as a critically-damped
@@ -421,7 +519,13 @@ function applyBlur(arr, activeIndex) {
   const endIdx = Math.min(arr.length, activeIndex + 15);
 
   for (let i = startIdx; i < endIdx; i++) {
-    const el = arr[i].HTMLElement;
+    const line = arr[i];
+    const el = line.HTMLElement;
+    // AMLL: interlude dots / bg vocal lines are never blurred
+    if (line.DotLine || line.BGLine) {
+      setStyleIfChanged(el, "--BlurAmount", "0px");
+      continue;
+    }
     const distance = Math.abs(i - activeIndex);
     const blurAmount = distance === 0 ? 0 : Math.min(BlurMultiplier * distance, max);
     const value = distance === 0 ? "0px" : `${blurAmount.toFixed(2)}px`;
@@ -503,6 +607,21 @@ export function animateLyrics(position, lyricsType, skip = false) {
   }
 }
 
+// Line focus timing around gaps:
+// - gap >= 1s: glide/fade into the next line 1 second early
+// - gap < 1s:  flip to the next line the moment the current line stops singing
+// Word timings are untouched, keeping karaoke in sync.
+function getEffectiveStart(arr, i) {
+  const line = arr && arr[i];
+  if (!line) return 0;
+  if (i <= 0) return line.StartTime;
+  const prevEnd = arr[i - 1].EndTime;
+  const gap = line.StartTime - prevEnd;
+  if (gap >= 1000) return line.StartTime - 1000;
+  if (gap > 0) return prevEnd;
+  return line.StartTime;
+}
+
 function animateSyllable(position, deltaTime) {
   const arr = LyricsObject.Types.Syllable.Lines;
   if (!arr.length) return;
@@ -512,7 +631,8 @@ function animateSyllable(position, deltaTime) {
   let scrollActiveIdx = -1;
   for (let i = 0; i < arr.length; i++) {
     const line = arr[i];
-    const status = line.Status || (position >= line.StartTime && position <= line.EndTime ? "Active" : (position > line.EndTime ? "Sung" : "NotSung"));
+    const effStart = getEffectiveStart(arr, i);
+    const status = position >= effStart && position <= line.EndTime ? "Active" : (position > line.EndTime ? "Sung" : "NotSung");
     if (status === "Active") {
       activeIdx = i;
       if (!line.BGLine && !line.DotLine) scrollActiveIdx = i;
@@ -529,7 +649,8 @@ function animateSyllable(position, deltaTime) {
   // Update status classes using overridden activeIdx
   for (let i = 0; i < arr.length; i++) {
     const line = arr[i];
-    let status = line.Status || (position >= line.StartTime && position <= line.EndTime ? "Active" : (position > line.EndTime ? "Sung" : "NotSung"));
+    const effStart = getEffectiveStart(arr, i);
+    let status = position >= effStart && position <= line.EndTime ? "Active" : (position > line.EndTime ? "Sung" : "NotSung");
     if (i === activeIdx) {
       status = "Active";
     }
@@ -546,7 +667,7 @@ function animateSyllable(position, deltaTime) {
   const isAML = settingsManager.get("amlAnimation");
   const isAML_lyrics = settingsManager.get("amlLyricsAnimations");
 
-  // Advance scroll focus: when line is done singing AND free space gap > 1 second (1000ms)
+  // Advance scroll focus: lead the next line in early when it follows a gap >= 1s
   let scrollIdx = scrollActiveIdx;
   if ((isSimpleMode || isAML || isAML_lyrics) && scrollActiveIdx !== -1) {
     let nextIdx = -1;
@@ -554,20 +675,9 @@ function animateSyllable(position, deltaTime) {
       if (!arr[i].BGLine && !arr[i].DotLine) { nextIdx = i; break; }
     }
     if (nextIdx !== -1) {
-      const curLineEnd = arr[scrollActiveIdx].EndTime;
-      const nextLineStart = arr[nextIdx].StartTime;
-      const gap = nextLineStart - curLineEnd;
-
-      if (gap > 1000) {
-        // Line is done singing and free space gap > 1s -> advance immediately on curLineEnd
-        if (position >= curLineEnd) {
-          scrollIdx = nextIdx;
-        }
-      } else {
-        // Gap <= 1s -> advance when next line starts
-        if (position >= nextLineStart) {
-          scrollIdx = nextIdx;
-        }
+      // Lead into big gaps: focus the next line 1 second before it starts
+      if (position >= getEffectiveStart(arr, nextIdx)) {
+        scrollIdx = nextIdx;
       }
     }
   }
@@ -611,12 +721,19 @@ function animateSyllable(position, deltaTime) {
   for (let index = startIdx; index < endIdx; index++) {
     const line = arr[index];
 
-    const lineActive = position >= line.StartTime && position <= line.EndTime;
+    const lineActive = position >= getEffectiveStart(arr, index) && position <= line.EndTime;
     const lineSung = position > line.EndTime;
 
     // AMLL bgSlideY spring: animate the parent line's bg wrapper in/out
     if (!line.BGLine && line._bgWrapper) {
       advanceBgSlide(line, lineActive, deltaTime);
+    }
+
+    // AMLL interlude dots: breathing + sequential lighting, replaces the
+    // per-dot "spicy dots" spring animation for musical lines
+    if (line.DotLine) {
+      advanceInterludeDots(line, position);
+      continue;
     }
 
     if ((line.IsConvertedLine || line.HTMLElement.parentElement?.classList.contains("is-converted-line")) && !line.DotLine) {
@@ -1130,7 +1247,7 @@ function animateLine(position, deltaTime) {
   let scrollActiveIdx = -1;
   for (let i = 0; i < arr.length; i++) {
     const line = arr[i];
-    const isAct = position >= line.StartTime && position <= line.EndTime;
+    const isAct = position >= getEffectiveStart(arr, i) && position <= line.EndTime;
     if (isAct) {
       activeIdx = i;
       if (!line.BGLine && !line.DotLine) scrollActiveIdx = i;
@@ -1158,7 +1275,7 @@ function animateLine(position, deltaTime) {
     }
   }
 
-  // Advance scroll focus: when line is done singing AND free space gap > 1 second (1000ms)
+  // Advance scroll focus: lead the next line in early when it follows a gap >= 1s
   let scrollIdx = scrollActiveIdx;
   if ((isSimpleMode || isAML) && scrollActiveIdx !== -1) {
     let nextIdx = -1;
@@ -1166,20 +1283,9 @@ function animateLine(position, deltaTime) {
       if (!arr[i].BGLine && !arr[i].DotLine) { nextIdx = i; break; }
     }
     if (nextIdx !== -1) {
-      const curLineEnd = arr[scrollActiveIdx].EndTime;
-      const nextLineStart = arr[nextIdx].StartTime;
-      const gap = nextLineStart - curLineEnd;
-
-      if (gap > 1000) {
-        // Line is done singing and free space gap > 1s -> advance immediately on curLineEnd
-        if (position >= curLineEnd) {
-          scrollIdx = nextIdx;
-        }
-      } else {
-        // Gap <= 1s -> advance when next line starts
-        if (position >= nextLineStart) {
-          scrollIdx = nextIdx;
-        }
+      // Lead into big gaps: focus the next line 1 second before it starts
+      if (position >= getEffectiveStart(arr, nextIdx)) {
+        scrollIdx = nextIdx;
       }
     }
   }
@@ -1223,8 +1329,14 @@ function animateLine(position, deltaTime) {
   for (let index = startIdx; index < endIdx; index++) {
     const line = arr[index];
 
-    const lineActive = position >= line.StartTime && position <= line.EndTime;
+    const lineActive = position >= getEffectiveStart(arr, index) && position <= line.EndTime;
     const lineSung = position > line.EndTime;
+
+    // AMLL interlude dots (line-type lyrics)
+    if (line.DotLine) {
+      advanceInterludeDots(line, position);
+      continue;
+    }
 
     if (lineActive) {
       if (blurringLastLine !== index) {
