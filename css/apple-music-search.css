@@ -1,0 +1,788 @@
+/* ═══════════════════════════════════════════════
+   Spicy AMLL Player — Apple Music "Listen/Search" Page
+   Styles for elements that previously had no CSS.
+   Matches the Apple Music dark, glassy aesthetic already
+   established in upload.css / global.css.
+   ═══════════════════════════════════════════════ */
+
+/* ── Search Bar ── */
+.am-apple-search-bar {
+  margin-bottom: 32px;
+}
+
+.am-apple-search-input-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  align-items: center;
+}
+
+.am-apple-search-input-wrapper .am-search-icon {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  color: rgba(255, 255, 255, 0.35);
+  pointer-events: none;
+}
+
+.am-apple-search-input-wrapper #catalog-search {
+  width: 100%;
+  padding: 13px 44px 13px 46px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  color: #fff;
+  font-size: 0.95rem;
+  font-family: inherit;
+  outline: none;
+  transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.am-apple-search-input-wrapper #catalog-search::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.am-apple-search-input-wrapper #catalog-search:focus {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(250, 36, 60, 0.45);
+  box-shadow: 0 0 0 4px rgba(250, 36, 60, 0.12);
+}
+
+.am-search-clear-btn {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.am-search-clear-btn:hover {
+  background: rgba(250, 36, 60, 0.25);
+  color: #fff;
+}
+
+.am-search-clear-btn.hidden {
+  display: none;
+}
+
+/* ── Landing View ── */
+.am-landing-view {
+  display: flex;
+  flex-direction: column;
+  gap: 44px;
+  animation: amFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.am-landing-view.hidden {
+  display: none;
+}
+
+/* ── Generic Search Section Header ── */
+.am-search-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.am-search-section.hidden {
+  display: none;
+}
+
+.am-section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.am-search-section-title {
+  font-size: 1.3rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+
+.am-text-action-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 8px;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.am-text-action-btn:hover {
+  color: #fa243c;
+  background: rgba(250, 36, 60, 0.1);
+}
+
+.am-empty-msg,
+.am-loading-msg {
+  padding: 24px 4px;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+/* ── Recently Searched ── */
+.am-recently-searched-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.am-recent-search-chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.am-recent-search-chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.14);
+  transform: translateY(-2px);
+}
+
+.am-chip-art {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+}
+
+.am-chip-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.am-chip-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.am-chip-sub {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: capitalize;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Browse Categories ── */
+.am-categories-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.skeleton-category-card {
+  height: 110px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-category-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04), transparent);
+  animation: amSkeleton 1.5s infinite;
+}
+
+.am-category-card {
+  position: relative;
+  height: 110px;
+  border-radius: 14px;
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-end;
+  padding: 14px;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+
+.am-category-card:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.4);
+}
+
+.am-category-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 30%, rgba(0, 0, 0, 0.65) 100%);
+  z-index: 1;
+}
+
+.am-category-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.85;
+}
+
+.am-category-title {
+  position: relative;
+  z-index: 2;
+  color: #fff;
+  font-weight: 800;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+/* ── Search Results Layout ── */
+.am-search-results-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+  animation: amFadeIn 0.4s ease;
+}
+
+.am-search-results-layout.hidden {
+  display: none;
+}
+
+/* ── Top Results ── */
+.am-top-results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.am-top-result-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.am-top-result-card:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+}
+
+.am-top-card-art {
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.am-top-result-card.is-artist .am-top-card-art {
+  border-radius: 50%;
+}
+
+.am-top-card-details {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.am-top-card-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.am-top-card-sub {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.45);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.am-top-card-lyrics {
+  font-size: 0.75rem;
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+/* ── Artists Horizontal Scroll ── */
+.am-artists-horizontal-scroll {
+  display: flex;
+  gap: 20px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: none;
+}
+
+.am-artists-horizontal-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.am-artist-circle-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  width: 120px;
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.2s ease;
+}
+
+.am-artist-circle-card:hover {
+  transform: translateY(-3px);
+}
+
+.am-artist-circle-img {
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.am-artist-circle-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* ── Songs Flex Grid (rows) ── */
+.am-songs-flex-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.am-song-row-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.am-song-row-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.am-song-row-art {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+}
+
+.am-song-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+}
+/* ==========================================
+   NAVIGATION BLUR & MOBILE LAYOUT
+   ========================================== */
+
+@media (max-width: 768px) {
+  .am-sidebar, 
+  .am-header-nav {
+    background: rgba(18, 18, 18, 0.65) !important;
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .am-artist-header {
+    height: 280px;
+  }
+
+  .am-artist-name-overlay {
+    font-size: 28px;
+    bottom: 16px;
+    left: 16px;
+  }
+
+  .am-main-content {
+    padding: 12px;
+    padding-bottom: 120px;
+  }
+}
+
+/* ==========================================
+   ARTIST DESCRIPTION & ABOUT SECTION
+   ========================================== */
+
+.am-about-section {
+  margin-top: 24px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+}
+
+.am-about-text-container {
+  position: relative;
+  max-height: 4.5em; /* Truncated preview height */
+  overflow: hidden;
+  transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  line-height: 1.5em;
+}
+
+.am-about-text-container.expanded {
+  max-height: 2000px;
+}
+
+.am-show-more-btn {
+  background: none;
+  border: none;
+  color: #fa2d48;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 8px;
+  padding: 0;
+  font-size: 14px;
+}
+
+.am-artist-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.am-meta-item label {
+  display: block;
+  font-size: 11px;
+  color: #8e8e93;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.am-meta-item span {
+  font-size: 14px;
+  color: #ffffff;
+}
+
+/* ==========================================
+   ALBUM FOOTER & METADATA
+   ========================================== */
+
+.am-album-footer-info {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 13px;
+  color: #8e8e93;
+  line-height: 1.6;
+}
+
+/* ==========================================
+   FLOATING BOTTOM MINI PLAYER
+   ========================================== */
+
+.am-bottom-player {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  background: rgba(25, 25, 25, 0.88);
+  backdrop-filter: blur(25px) saturate(180%);
+  -webkit-backdrop-filter: blur(25px) saturate(180%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  z-index: 999;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+@media (min-width: 769px) {
+  .am-bottom-player {
+    border-radius: 12px;
+    bottom: 12px;
+    left: 260px;
+    right: 16px;
+  }
+}
+
+.am-player-track-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.am-player-cover {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.am-player-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.am-player-title {
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.am-player-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.am-player-btn {
+  background: none;
+  border: none;
+  color: #ffffff;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.am-song-row-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.am-song-row-artist {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.45);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.am-lyrics-badge {
+  display: inline-block;
+  margin-top: 3px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fa243c;
+  background: rgba(250, 36, 60, 0.12);
+  padding: 2px 8px;
+  border-radius: 100px;
+  width: fit-content;
+}
+
+.am-song-more-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 1rem;
+  letter-spacing: 1px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.am-song-more-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ── Albums / Playlists / Videos Horizontal Card Scroll ── */
+.am-cards-horizontal-scroll {
+  display: flex;
+  gap: 18px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: none;
+}
+
+.am-cards-horizontal-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.am-standard-media-card {
+  flex-shrink: 0;
+  width: 170px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.am-standard-media-card:hover {
+  transform: translateY(-4px);
+}
+
+.am-media-card-art {
+  width: 170px;
+  height: 170px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+}
+
+.am-media-card-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.am-media-card-sub {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.45);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Album Art Container (with animated art support) ── */
+.am-album-art-container {
+  position: relative;
+  width: 250px;
+  height: 250px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  flex-shrink: 0;
+}
+
+.am-album-art-container .am-album-cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ── Playlists Page: Hero Actions + Playlist Detail ── */
+.am-hero-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.am-playlist-detail {
+  margin-top: 30px;
+  animation: amFadeIn 0.4s ease;
+}
+
+.am-playlist-detail.hidden {
+  display: none;
+}
+
+.am-back-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 100px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.am-back-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .am-top-results-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .am-categories-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+
+  .am-album-art-container {
+    width: 200px;
+    height: 200px;
+  }
+}
