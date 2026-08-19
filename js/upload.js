@@ -563,8 +563,10 @@ function renderAlbumFooter(albumData, tracks) {
     <div>℗ ${productionTeam}</div>
   `;
 }
+// Global preview state variables
+window._activePreviewAudio = window._activePreviewAudio || null;
+let currentPreviewTrackIndex = 0;
 
-// Render Floating Bottom Player Component
 function renderBottomPlayer(track) {
   let playerEl = document.getElementById('am-bottom-player');
   if (!playerEl) {
@@ -576,22 +578,49 @@ function renderBottomPlayer(track) {
 
   playerEl.innerHTML = `
     <div class="am-player-track-info">
-      <img class="am-player-cover" src="${track.coverUrl || 'placeholder.jpg'}" alt="Cover" />
+      <img class="am-player-cover" src="${track.artUrl || 'favicon.svg'}" alt="Cover" />
       <div class="am-player-details">
-        <span class="am-player-title">${track.title}</span>
-        <span style="font-size: 12px; color: #8e8e93;">${track.artist || ''}</span>
+        <span class="am-player-title">${escapeHTML(track.title)}</span>
+        <span style="font-size: 12px; color: #8e8e93;">${escapeHTML(track.artist)}</span>
       </div>
     </div>
     <div class="am-player-controls">
+      <button class="am-player-btn" id="am-prev-btn">⏮</button>
       <button class="am-player-btn" id="am-play-pause-btn">❚❚</button>
-      <button class="am-player-btn" id="am-next-btn">❯❯</button>
+      <button class="am-player-btn" id="am-next-btn">⏭</button>
     </div>
   `;
+
+  document.getElementById('am-play-pause-btn').onclick = togglePreviewPlayPause;
+  document.getElementById('am-next-btn').onclick = () => {
+    if (window.currentAlbumTracks && currentPreviewTrackIndex + 1 < window.currentAlbumTracks.length) {
+      playPreviewAudioQueue(window.currentAlbumTracks, currentPreviewTrackIndex + 1);
+    }
+  };
+  document.getElementById('am-prev-btn').onclick = () => {
+    if (window.currentAlbumTracks && currentPreviewTrackIndex - 1 >= 0) {
+      playPreviewAudioQueue(window.currentAlbumTracks, currentPreviewTrackIndex - 1);
+    }
+  };
 }
 
-// Handle Preview Playback directly inside index.html without navigating to player.html
-// Updated Preview Queue function inside upload.js
-function playPreviewAudioQueue(tracks) {
+function togglePreviewPlayPause() {
+  if (!window._activePreviewAudio) return;
+  const playBtn = document.getElementById('am-play-pause-btn');
+  const previewBtnLabel = document.getElementById('preview-btn-label');
+
+  if (window._activePreviewAudio.paused) {
+    window._activePreviewAudio.play();
+    if (playBtn) playBtn.textContent = '❚❚';
+    if (previewBtnLabel) previewBtnLabel.textContent = 'Pause';
+  } else {
+    window._activePreviewAudio.pause();
+    if (playBtn) playBtn.textContent = '▶';
+    if (previewBtnLabel) previewBtnLabel.textContent = 'Preview';
+  }
+}
+
+function playPreviewAudioQueue(tracks, startIndex = 0) {
   if (!tracks || tracks.length === 0) return;
 
   if (window._activePreviewAudio) {
@@ -599,65 +628,70 @@ function playPreviewAudioQueue(tracks) {
     window._activePreviewAudio = null;
   }
 
-  let index = 0;
+  currentPreviewTrackIndex = startIndex;
+  const track = tracks[currentPreviewTrackIndex];
+  const targetAudioUrl = track.previewUrl || `${API_BASE}/download?song=${track.id}`;
 
-  function playTrack(idx) {
-    if (idx >= tracks.length) return;
-    const track = tracks[idx];
-    const previewUrl = `${API_BASE}/download?song=${track.id}`;
+  const audio = new Audio(targetAudioUrl);
+  window._activePreviewAudio = audio;
 
-    const audio = new Audio(previewUrl);
-    window._activePreviewAudio = audio;
+  // Retrieve primary artwork URL
+  const headerArtImg = document.querySelector('.am-album-cover');
+  const artUrl = headerArtImg ? headerArtImg.src : 'favicon.svg';
 
-    // Render Floating Mini Player UI
-    renderBottomPlayer({
+  renderBottomPlayer({
+    title: track.name || track.title,
+    artist: track.artistName || track.artist || 'Unknown Artist',
+    artUrl: artUrl
+  });
+
+  // Media Session Routing
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({
       title: track.name || track.title,
       artist: track.artistName || track.artist || 'Unknown Artist',
-      coverUrl: track.artUrl || 'favicon.svg'
+      artwork: [{ src: artUrl, sizes: '512x512', type: 'image/jpeg' }]
     });
 
-    // Register OS Media Session Controls
-    if ('mediaSession' in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: track.name || track.title,
-        artist: track.artistName || track.artist || 'Unknown Artist',
-        artwork: [{ src: track.artUrl || 'favicon.svg', sizes: '512x512', type: 'image/jpeg' }]
-      });
-
-      navigator.mediaSession.setActionHandler('play', () => audio.play());
-      navigator.mediaSession.setActionHandler('pause', () => audio.pause());
-      navigator.mediaSession.setActionHandler('nexttrack', () => {
-        audio.pause();
-        if (index + 1 < tracks.length) playTrack(++index);
-      });
-      navigator.mediaSession.setActionHandler('previoustrack', () => {
-        audio.pause();
-        if (index > 0) playTrack(--index);
-      });
-    }
-
-    audio.play().catch(console.warn);
-
-    // Playback state listeners
-    audio.onplay = () => {
-      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
-      const playBtn = document.getElementById('am-play-pause-btn');
-      if (playBtn) playBtn.textContent = '❚❚';
-    };
-
-    audio.onpause = () => {
-      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
-      const playBtn = document.getElementById('am-play-pause-btn');
-      if (playBtn) playBtn.textContent = '▶';
-    };
-
-    audio.onended = () => {
-      index++;
-      if (index < tracks.length) playTrack(index);
-    };
+    navigator.mediaSession.setActionHandler('play', () => audio.play());
+    navigator.mediaSession.setActionHandler('pause', () => audio.pause());
+    navigator.mediaSession.setActionHandler('nexttrack', () => {
+      if (currentPreviewTrackIndex + 1 < tracks.length) {
+        playPreviewAudioQueue(tracks, currentPreviewTrackIndex + 1);
+      }
+    });
+    navigator.mediaSession.setActionHandler('previoustrack', () => {
+      if (currentPreviewTrackIndex - 1 >= 0) {
+        playPreviewAudioQueue(tracks, currentPreviewTrackIndex - 1);
+      }
+    });
   }
 
-  playTrack(index);
+  audio.play().then(() => {
+    const previewBtnLabel = document.getElementById('preview-btn-label');
+    if (previewBtnLabel) previewBtnLabel.textContent = 'Pause';
+  }).catch(console.warn);
+
+  audio.onplay = () => {
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+    const playBtn = document.getElementById('am-play-pause-btn');
+    if (playBtn) playBtn.textContent = '❚❚';
+  };
+
+  audio.onpause = () => {
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+    const playBtn = document.getElementById('am-play-pause-btn');
+    if (playBtn) playBtn.textContent = '▶';
+  };
+
+  audio.onended = () => {
+    if (currentPreviewTrackIndex + 1 < tracks.length) {
+      playPreviewAudioQueue(tracks, currentPreviewTrackIndex + 1);
+    } else {
+      const previewBtnLabel = document.getElementById('preview-btn-label');
+      if (previewBtnLabel) previewBtnLabel.textContent = 'Preview';
+    }
+  };
 }
 
 
@@ -820,10 +854,49 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
   }
+// Helper: Format milliseconds into standard time (M:SS)
+function formatTime(ms) {
+  if (!ms) return '0:00';
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+}
+
+// Helper: Format total album duration into human-readable format
+function formatTotalAlbumDuration(totalMs) {
+  const totalMins = Math.round(totalMs / 60000);
+  if (totalMins >= 60) {
+    const hrs = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
+    return `${hrs} ${hrs === 1 ? 'hour' : 'hours'}, ${mins} minutes`;
+  }
+  return `${totalMins} minutes`;
+}
+
+// Helper: Format release date (e.g. 18 November 2016)
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return dateStr;
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+}
 
 function mapApiSongToLocal(song) {
   if (!song) return null;
   const attr = song.attributes || {};
+  return {
+    trackId: song.id,
+    trackName: attr.name,
+    artistName: attr.artistName,
+    collectionName: attr.albumName,
+    // Add albumId and artistId fallback mappings:
+    albumId: song.relationships?.albums?.data?.[0]?.id || attr.albumId || null,
+    artistId: song.relationships?.artists?.data?.[0]?.id || attr.artistId || null,
+    artworkUrl100: attr.artwork?.url ? attr.artwork.url.replace('{w}', '100').replace('{h}', '100') : ''
+  };
+}
+
 // ── Album Detail View (Fetching via /album?album= ID) ──
 async function fetchAlbumDetails(albumId) {
   listenInitialContent.classList.add('hidden');
@@ -839,7 +912,7 @@ async function fetchAlbumDetails(albumId) {
     if (!res.ok) throw new Error(`Album fetch failed ${res.status}`);
     const data = await res.json();
 
-    // The real catalog object lives at raw_data.data[0], not data.data[0]
+    // Access nested raw data or fallback root structures
     const albumObj = data.raw_data?.data?.[0] || data.data?.[0] || data.results?.albums?.data?.[0];
     if (!albumObj) throw new Error('Album not found in response');
 
@@ -860,9 +933,9 @@ async function fetchAlbumDetails(albumId) {
     }
 
     const year = attr.releaseDate ? new Date(attr.releaseDate).getFullYear() : '';
-    const shortDesc = attr.editorialNotes?.short || '';
-    const standardDesc = attr.editorialNotes?.standard || '';
+    const genre = attr.genreNames?.[0] || 'Music';
 
+    // Render Album Header Metadata
     albumHeader.innerHTML = `
       <div class="am-album-art-container">
         ${videoUrl ? `<video src="${videoUrl}" autoplay loop muted playsinline class="am-album-cover"></video>` : `<img src="${artUrl}" class="am-album-cover">`}
@@ -870,51 +943,50 @@ async function fetchAlbumDetails(albumId) {
       <div class="am-album-details">
         <h2 class="am-album-title">${escapeHTML(attr.name || 'Album')}</h2>
         <div class="am-album-artist" id="album-artist-link" style="${artistId ? 'cursor:pointer;' : ''}">${escapeHTML(artistName)}</div>
-        <div class="am-album-meta">${escapeHTML(attr.genreNames?.[0] || 'Music')} • ${year}</div>
-        ${shortDesc ? `<p class="am-album-desc" id="album-desc-text">${escapeHTML(shortDesc)}${standardDesc && standardDesc !== shortDesc ? ` <span id="album-desc-more" style="color:#fa243c; cursor:pointer; font-weight:700;">MORE</span>` : ''}</p>` : ''}
-        <button class="premium-btn primary" id="album-play-btn" style="border-radius:100px; padding:0 32px; height:44px; display:inline-flex; align-items:center; gap:8px; width:fit-content;">
+        <div class="am-album-meta">${escapeHTML(genre)} • ${year}</div>
+        <button class="premium-btn primary" id="album-play-btn" style="border-radius:100px; padding:0 32px; height:44px; display:inline-flex; align-items:center; gap:8px; width:fit-content; margin-top:12px;">
           <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M8 5v14l11-7z"/></svg>
-          <span>Preview</span>
+          <span id="preview-btn-label">Preview</span>
         </button>
       </div>
     `;
-
-    const descMoreBtn = document.getElementById('album-desc-more');
-    if (descMoreBtn) {
-      descMoreBtn.onclick = () => {
-        const descEl = document.getElementById('album-desc-text');
-        if (descEl) descEl.textContent = standardDesc.replace(/<[^>]*>/g, '');
-      };
-    }
 
     const artistLink = document.getElementById('album-artist-link');
     if (artistLink && artistId) {
       artistLink.onclick = () => openArtistView(artistId, artistName);
     }
 
-    // Prefer the flattened parsed_tracks list; fall back to raw relationships
+    // Extract Tracks & Raw Relationships Preview Links
     const relTracks = albumObj.relationships?.tracks?.data || [];
     const tracks = (data.parsed_tracks && data.parsed_tracks.length > 0)
-      ? data.parsed_tracks.map(t => ({
-          id: t.id,
-          name: t.title,
-          artistName: t.artist,
-          trackNumber: t.track_number,
-          durationInMillis: t.duration_ms,
-        }))
+      ? data.parsed_tracks.map(t => {
+          const matchedRel = relTracks.find(r => String(r.id) === String(t.id));
+          return {
+            id: t.id,
+            name: t.title,
+            artistName: t.artist,
+            trackNumber: t.track_number,
+            durationInMillis: t.duration_ms,
+            previewUrl: matchedRel?.attributes?.previews?.[0]?.url || `${API_BASE}/download?song=${t.id}`
+          };
+        })
       : relTracks.map(t => ({
           id: t.id,
           name: t.attributes?.name,
           artistName: t.attributes?.artistName,
           trackNumber: t.attributes?.trackNumber,
           durationInMillis: t.attributes?.durationInMillis,
+          previewUrl: t.attributes?.previews?.[0]?.url || `${API_BASE}/download?song=${t.id}`
         }));
 
+    window.currentAlbumTracks = tracks;
+
+    // Render Track Rows
     albumTracksGrid.innerHTML = tracks.map((t, idx) => `
-      <div class="am-track-row animate-fade" data-id="${t.id}">
+      <div class="am-track-row animate-fade" data-id="${t.id}" data-index="${idx}">
          <div class="am-track-num">${t.trackNumber || idx + 1}</div>
          <div class="am-track-title">${escapeHTML(t.name || 'Unknown')}</div>
-         <div class="am-track-duration">${millisToMinutesAndSeconds(t.durationInMillis)}</div>
+         <div class="am-track-duration">${formatTime(t.durationInMillis)}</div>
          <button class="am-song-more-btn" data-id="${t.id}">•••</button>
       </div>
     `).join('');
@@ -936,40 +1008,45 @@ async function fetchAlbumDetails(albumId) {
           });
           return;
         }
-        loadTrackById(row.dataset.id);
+        playPreviewAudioQueue(tracks, parseInt(row.dataset.index, 10));
       };
     });
-// Add footer rendering inside fetchAlbumDetails in upload.js
-const albumRawAttr = albumObj.attributes || {};
-const footerContainer = document.createElement('div');
-footerContainer.id = 'album-footer-info';
-footerContainer.className = 'am-album-footer-info';
 
-renderAlbumFooter(
-  {
-    releaseDate: albumRawAttr.releaseDate,
-    productionTeam: albumRawAttr.copyright || albumRawAttr.recordLabel
-  },
-  tracks.map(t => ({ duration: Math.floor((t.durationInMillis || 0) / 1000) }))
-);
+    // Render Footer (Date, Duration, Copyright/Label)
+    let footerContainer = document.getElementById('album-footer-info');
+    if (!footerContainer) {
+      footerContainer = document.createElement('div');
+      footerContainer.id = 'album-footer-info';
+      footerContainer.className = 'am-album-footer-info';
+      albumTracksGrid.after(footerContainer);
+    }
 
-albumTracksGrid.after(document.getElementById('album-footer-info') || footerContainer);
+    const totalMs = tracks.reduce((acc, t) => acc + (t.durationInMillis || 0), 0);
+    const releaseDateStr = formatDate(attr.releaseDate);
+    const copyrightStr = attr.copyright || '℗ All Rights Reserved';
 
-    // REPLACE WITH THIS:
-const playBtn = document.getElementById('album-play-btn');
-if (playBtn && tracks.length > 0) {
-  playBtn.onclick = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    window.currentAlbumTracks = tracks;
-    playPreviewAudioQueue(tracks.map(t => t.id));
-  };
-}
+    footerContainer.innerHTML = `
+      <div style="font-weight: 500;">${releaseDateStr}</div>
+      <div>${tracks.length} songs, ${formatTotalAlbumDuration(totalMs)}</div>
+      <div style="margin-top: 4px; opacity: 0.8;">${escapeHTML(copyrightStr)}</div>
+    `;
+
+    // Attach Action to Header Preview Button
+    const playBtn = document.getElementById('album-play-btn');
+    if (playBtn) {
+      playBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        playPreviewAudioQueue(tracks, 0);
+      };
+    }
+
   } catch (err) {
     console.error(err);
     albumHeader.innerHTML = `<div class="am-error-msg">Failed to load album details.</div>`;
   }
 }
+
 
 function formatDuration(ms) {
   if (!ms) return '0:00';
