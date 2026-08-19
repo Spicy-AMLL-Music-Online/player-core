@@ -4,10 +4,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Spicy AMLL Player — Synchronized Apple Music Lyrics</title>
-  <meta name="description" content="Spicy AMLL Player — Experience synchronized Apple Music lyrics with beautiful, high-fidelity animations. Stream, upload, and download TTML lyrics online.">
+  <title>Spicy AMLL Player — Synchronized Lyrics & Player</title>
+  <meta name="description" content="Spicy AMLL Player — Stream, upload, and experience high-fidelity synchronized lyrics and music.">
 
-  <!-- Fonts (Player fonts + Outfit for title only) -->
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
@@ -18,6 +18,8 @@
   <link rel="stylesheet" href="css/global.css">
   <link rel="stylesheet" href="css/animations.css">
   <link rel="stylesheet" href="css/upload.css">
+  <!-- Apple Music styling for elements that previously had none (search/listen page) -->
+  <link rel="stylesheet" href="css/apple-music-search.css">
 
   <!-- Favicon & Icons -->
   <link rel="icon" type="image/x-icon" href="favicon.ico">
@@ -27,7 +29,7 @@
 </head>
 
 <body>
-  <!-- Premium Update Cache Detector -->
+  <!-- Update Cache Detector -->
   <script>
     (function() {
       import('./js/router.js')
@@ -36,7 +38,7 @@
             showCacheModal();
           }
         })
-        .catch(function(e) {
+        .catch(function() {
           showCacheModal();
         });
 
@@ -47,7 +49,6 @@
           btn.textContent = 'Clearing Cache...';
         }
 
-        // 1. Clear Cache Storage API
         if ('caches' in window) {
           try {
             const keys = await caches.keys();
@@ -57,7 +58,6 @@
           }
         }
 
-        // 2. Unregister Service Workers
         if ('serviceWorker' in navigator) {
           try {
             const registrations = await navigator.serviceWorker.getRegistrations();
@@ -67,7 +67,6 @@
           }
         }
 
-        // 3. Force reload with cache-busting timestamp
         const url = new URL(window.location.href);
         url.searchParams.set('cb', Date.now());
         window.location.href = url.toString();
@@ -104,7 +103,7 @@
             text-align: center;
             box-shadow: 0 30px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1);
             color: #ffffff;
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", sans-serif;
             animation: spicyScaleUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
           }
           .spicy-update-logo { font-size: 56px; margin-bottom: 20px; }
@@ -150,9 +149,7 @@
             <div class="spicy-update-logo">🌶️</div>
             <h2 class="spicy-update-title">Application Updated!</h2>
             <p class="spicy-update-desc">
-              A premium new update has been installed! To apply these changes and prevent playlist errors, please clear your browser cache or perform a hard reload.
-              <br><br>
-              <strong>Shortcut:</strong> Press <code>Ctrl + F5</code> (Windows) or <code>Cmd + Shift + R</code> (Mac).
+              A new update has been installed! To apply these changes, please clear your browser cache or perform a hard reload.
             </p>
             <button class="spicy-update-btn" onclick="clearCacheAndReload()">Clear Cache & Reload</button>
             <button class="spicy-update-dismiss" onclick="document.getElementById('spicy-cache-detector-modal').remove()">Dismiss</button>
@@ -183,11 +180,9 @@
         <ul class="am-sidebar-nav">
           <li class="am-nav-item am-nav-active" data-page="listen">
             <svg viewBox="0 0 24 24" fill="currentColor">
-              <path
-                d="M12 10.9c-.61 0-1.1.49-1.1 1.1s.49 1.1 1.1 1.1c.61 0 1.1-.49 1.1-1.1s-.49-1.1-1.1-1.1zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm2.19 12.19L6 18l3.81-8.19L18 6l-3.81 8.19z">
-              </path>
+              <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
             </svg>
-            <span>Browse</span>
+            <span>Search</span>
           </li>
           <li class="am-nav-item" data-page="download-ttml">
             <svg viewBox="0 0 24 24" fill="currentColor">
@@ -215,17 +210,15 @@
         <ul class="am-sidebar-nav">
           <li class="am-nav-item" data-page="recent">
             <svg viewBox="0 0 24 24" fill="currentColor">
-              <path
-                d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z" />
+              <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z" />
             </svg>
-            <span>Recently Listened Tracks</span>
+            <span>Recently Listened</span>
           </li>
           <li class="am-nav-item" data-page="songs">
             <svg viewBox="0 0 24 24" fill="currentColor">
-              <path
-                d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z" />
+              <path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z" />
             </svg>
-            <span>Favorite Songs</span>
+            <span>Favorites</span>
           </li>
           <li class="am-nav-item" data-page="playlists">
             <svg viewBox="0 0 24 24" fill="currentColor">
@@ -237,14 +230,13 @@
       </div>
 
       <div class="am-sidebar-footer">
-        <p>A premium UNOFFICIAL remake of <a href="https://github.com/Spikerko/spicy-lyrics" target="_blank">Spicy
-            Lyrics</a></p>
+        <p>A premium remake of <a href="https://github.com/Spikerko/spicy-lyrics" target="_blank">Spicy Lyrics</a></p>
       </div>
     </nav>
 
     <!-- ═══ Main Content ═══ -->
     <main class="am-main">
-      <!-- Mobile Header Sticky Bar -->
+      <!-- Mobile Header -->
       <header class="am-mobile-header">
         <button id="sidebar-toggle" class="am-sidebar-toggle-btn" aria-label="Open Sidebar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -257,10 +249,10 @@
           <img src="favicon.svg" class="am-mobile-logo" alt="🌶️">
           <span class="am-mobile-title">Spicy AMLL</span>
         </div>
-        <div style="width: 40px;"></div> <!-- Spacer to balance layout -->
+        <div style="width: 40px;"></div>
       </header>
 
-      <!-- Subtle animated background -->
+      <!-- Background glow -->
       <div class="am-bg-glow">
         <div class="am-glow am-glow-1"></div>
         <div class="am-glow am-glow-2"></div>
@@ -268,97 +260,110 @@
       </div>
 
       <div class="am-content">
-        <!-- ── Browse Page (Main) ── -->
+        <!-- ── Search / Browse Page ── -->
         <div id="page-listen" class="am-page active">
-          <!-- Hero Section -->
-          <div class="am-hero">
-            <div class="am-hero-icon" style="background: linear-gradient(135deg, #fa243c 0%, #ff2d55 100%);">
-              <svg viewBox="0 0 24 24" fill="currentColor">
-                <path
-                  d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
-              </svg>
-            </div>
-            <div class="am-hero-text">
-              <h1 class="am-hero-title">Browse</h1>
-              <p class="am-hero-subtitle">Top curated tracks from global charts, ready to stream with high-fidelity
-                visuals.</p>
-            </div>
-          </div>
-
-          <!-- Search Bar -->
-          <div class="am-search-container">
-            <div class="am-search-box">
-              <svg class="am-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                stroke-linecap="round" stroke-linejoin="round">
+          
+          <!-- Unified Apple Music-style Search Input Bar -->
+          <div class="am-apple-search-bar">
+            <div class="am-apple-search-input-wrapper">
+              <svg class="am-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="11" cy="11" r="8"></circle>
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
               </svg>
-              <input type="text" id="catalog-search" placeholder="Artists, Songs, Lyrics, and More" autocomplete="off">
+              <input type="text" id="catalog-search" placeholder="Search" autocomplete="off">
+              <button id="search-clear-btn" class="am-search-clear-btn hidden" aria-label="Clear Search">✕</button>
             </div>
           </div>
 
-          <!-- Initial Content (Trending + Albums) -->
-          <div id="listen-initial-content" class="trending-view">
-            <div class="trending-section">
-              <div class="section-header">
-                <div class="header-left">
-                  <h2 class="section-title">Trending Now</h2>
-                  <span class="section-tag">Global Charts</span>
-                </div>
+          <!-- Initial Landing View (Recently Searched + Browse Categories Recommendations) -->
+          <div id="listen-initial-content" class="am-landing-view">
+            
+            <!-- Recently Searched Section -->
+            <div id="recently-searched-section" class="am-search-section hidden">
+              <div class="am-section-header-row">
+                <h2 class="am-search-section-title">Recently Searched</h2>
+                <button id="clear-recent-searches-btn" class="am-text-action-btn">Clear</button>
               </div>
-              <div class="trending-grid" id="trending-grid">
-                <!-- Skeletons loader injected via JS -->
-                <div class="skeleton-card"></div>
-                <div class="skeleton-card"></div>
-                <div class="skeleton-card"></div>
-                <div class="skeleton-card"></div>
-                <div class="skeleton-card"></div>
+              <div class="am-recently-searched-grid" id="recently-searched-grid">
+                <!-- Injected via JS -->
               </div>
             </div>
 
-            <div class="trending-section">
-              <div class="section-header">
-                <div class="header-left">
-                  <h2 class="section-title">Featured Albums</h2>
-                  <span class="section-tag">Popular Releases</span>
-                </div>
-              </div>
-              <div class="albums-grid" id="albums-grid">
-                <!-- Skeletons injected via JS -->
-                <div class="skeleton-album"></div>
-                <div class="skeleton-album"></div>
-                <div class="skeleton-album"></div>
+            <!-- Browse Categories Section (Fetched from Recommendations endpoint) -->
+            <div class="am-search-section">
+              <h2 class="am-search-section-title">Browse Categories</h2>
+              <div class="am-categories-grid" id="categories-grid">
+                <!-- Skeletons Loader -->
+                <div class="skeleton-category-card"></div>
+                <div class="skeleton-category-card"></div>
+                <div class="skeleton-category-card"></div>
+                <div class="skeleton-category-card"></div>
               </div>
             </div>
+
           </div>
 
-          <!-- Search Results Container (Hidden by default) -->
-          <div id="search-results-container" class="am-search-results hidden">
-             <div class="section-header">
-                <h2 class="section-title" id="search-results-title">Search Results</h2>
-                <button class="am-back-btn" id="search-back-btn">Back to Browse</button>
-             </div>
-             <div class="trending-grid" id="search-grid"></div>
-          </div>
-
-          <!-- Album View Container (Hidden by default) -->
-          <div id="album-view-container" class="am-album-view hidden">
-             <!-- Top details area will be injected via JS -->
-             <div id="album-header" class="am-album-header"></div>
+          <!-- Search Results Layout Container (Categorized into Top Results, Artists, Songs, Albums, Playlists) -->
+          <div id="search-results-container" class="am-search-results-layout hidden">
              
+             <!-- Top Results -->
+             <div id="section-top-results" class="am-search-section hidden">
+                <h2 class="am-search-section-title">Top Results</h2>
+                <div class="am-top-results-grid" id="top-results-grid"></div>
+             </div>
+
+             <!-- Artists -->
+             <div id="section-artists" class="am-search-section hidden">
+                <h2 class="am-search-section-title">Artists</h2>
+                <div class="am-artists-horizontal-scroll" id="artists-grid"></div>
+             </div>
+
+             <!-- Songs -->
+             <div id="section-songs" class="am-search-section hidden">
+                <h2 class="am-search-section-title">Songs</h2>
+                <div class="am-songs-flex-grid" id="songs-grid"></div>
+             </div>
+
+             <!-- Albums -->
+             <div id="section-albums" class="am-search-section hidden">
+                <h2 class="am-search-section-title">Albums</h2>
+                <div class="am-cards-horizontal-scroll" id="albums-grid"></div>
+             </div>
+
+             <!-- Playlists -->
+             <div id="section-playlists" class="am-search-section hidden">
+                <h2 class="am-search-section-title">Playlists</h2>
+                <div class="am-cards-horizontal-scroll" id="playlists-search-grid"></div>
+             </div>
+
+             <!-- Music Videos -->
+             <div id="section-videos" class="am-search-section hidden">
+                <h2 class="am-search-section-title">Music Videos</h2>
+                <div class="am-cards-horizontal-scroll" id="videos-grid"></div>
+             </div>
+
+          </div>
+
+          <!-- Album View Container (Apple Music Detail Style) -->
+          <div id="album-view-container" class="am-album-view hidden">
+             <div id="album-header" class="am-album-header"></div>
              <div class="am-album-tracks" id="album-tracks-grid"></div>
           </div>
 
-          <!-- Artist View Container (Hidden by default) -->
+          <!-- Artist View Container -->
           <div id="artist-view-container" class="am-artist-view hidden">
-             <!-- Header and Top Songs will be injected via JS -->
              <div id="artist-view-content"></div>
           </div>
+
+          <!-- Playlist View Container (Apple Music Playlist Detail Style) -->
+          <div id="playlist-view-container" class="am-playlist-view hidden">
+             <div id="playlist-view-content"></div>
+          </div>
+
         </div>
 
         <!-- ── Upload Page ── -->
         <div id="page-upload" class="am-page">
-          <!-- Hero Section -->
           <div class="am-hero">
             <div class="am-hero-icon">
               <svg viewBox="0 0 24 24" fill="currentColor">
@@ -367,20 +372,16 @@
             </div>
             <div class="am-hero-text">
               <h1 class="am-hero-title">Upload Your Music</h1>
-              <p class="am-hero-subtitle">Drop your audio files and lyrics to experience stunning synchronized visuals.
-              </p>
+              <p class="am-hero-subtitle">Drop audio files and lyrics to experience synchronized visuals.</p>
             </div>
           </div>
 
-          <!-- Upload Area -->
           <div class="am-upload-area">
             <div class="am-upload-cards">
-              <!-- Audio Upload Card -->
               <div class="am-upload-card am-card-primary" id="audio-zone" title="Drop or click to upload audio">
                 <div class="am-card-icon">
                   <svg viewBox="0 0 24 24">
-                    <path
-                      d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+                    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
                   </svg>
                 </div>
                 <div class="am-card-info">
@@ -392,13 +393,10 @@
                 <input type="file" id="audio-input" accept="audio/*,.mp3,.flac,.wav,.ogg,.m4a,.aac" multiple>
               </div>
 
-              <!-- TTML Upload Card -->
-              <div class="am-upload-card am-card-optional" id="ttml-zone"
-                title="Drop or click to upload lyrics (Optional)">
+              <div class="am-upload-card am-card-optional" id="ttml-zone" title="Drop or click to upload lyrics">
                 <div class="am-card-icon">
                   <svg viewBox="0 0 24 24">
-                    <path
-                      d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM6 20V4h7v5h5v11H6zm2-6h8v1.5H8V14zm0 3h6v1.5H8V17zm0-6h8v1.5H8V11z" />
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM6 20V4h7v5h5v11H6zm2-6h8v1.5H8V14zm0 3h6v1.5H8V17zm0-6h8v1.5H8V11z" />
                   </svg>
                 </div>
                 <div class="am-card-info">
@@ -411,19 +409,15 @@
               </div>
             </div>
 
-            <!-- Queue Preview -->
             <div id="queue-preview" class="am-queue-preview">
               <div class="am-queue-header">
                 <h4>Up Next</h4>
                 <span id="queue-count" class="am-queue-count">0 tracks</span>
                 <button id="clear-queue-btn" class="am-clear-btn">Clear All</button>
               </div>
-              <div class="queue-list" id="queue-list">
-                <!-- Items added via JS -->
-              </div>
+              <div class="queue-list" id="queue-list"></div>
             </div>
 
-            <!-- Actions -->
             <div class="am-actions">
               <button id="start-button" class="am-start-btn" disabled>
                 <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
@@ -446,12 +440,10 @@
             </div>
             <div class="am-hero-text">
               <h1 class="am-hero-title">Recently Listened</h1>
-              <p class="am-hero-subtitle">Tracks you've recently experienced in high-fidelity.</p>
+              <p class="am-hero-subtitle">Tracks you've recently played.</p>
             </div>
           </div>
-          <div class="trending-grid" id="recent-tracks-grid">
-             <!-- Injected via JS -->
-          </div>
+          <div class="trending-grid" id="recent-tracks-grid"></div>
         </div>
 
         <!-- ── Favorite Songs Page ── -->
@@ -463,13 +455,11 @@
               </svg>
             </div>
             <div class="am-hero-text">
-              <h1 class="am-hero-title">Favorite Songs</h1>
-              <p class="am-hero-subtitle">All your loved tracks in one place.</p>
+              <h1 class="am-hero-title">Favorites</h1>
+              <p class="am-hero-subtitle">Your loved tracks in one place.</p>
             </div>
           </div>
-          <div class="trending-grid" id="favorite-tracks-grid">
-             <!-- Injected via JS -->
-          </div>
+          <div class="trending-grid" id="favorite-tracks-grid"></div>
         </div>
 
         <!-- ── Playlists Page ── -->
@@ -487,9 +477,7 @@
               </div>
             </div>
           </div>
-          <div class="playlists-grid" id="playlists-grid">
-             <!-- Injected via JS -->
-          </div>
+          <div class="playlists-grid" id="playlists-grid"></div>
           <div id="playlist-detail" class="am-playlist-detail hidden">
              <div class="section-header">
                 <h2 class="section-title" id="playlist-detail-title">Playlist Name</h2>
@@ -502,7 +490,6 @@
         <!-- ── Download TTML Page ── -->
         <div id="page-download-ttml" class="am-page">
           <div class="download-bg-glow"></div>
-          
           <div class="premium-downloader-container">
             <div class="glass-card premium-card">
               <div class="downloader-header">
@@ -512,7 +499,7 @@
                   </svg>
                 </div>
                 <h1 class="premium-title">TTML Downloader</h1>
-                <p class="premium-subtitle">Enter an Apple Music Song ID to extract high-fidelity synchronized lyrics.</p>
+                <p class="premium-subtitle">Enter a Song ID to extract high-fidelity synchronized lyrics.</p>
               </div>
 
               <div class="premium-input-group">
@@ -534,7 +521,7 @@
                   <div class="song-details">
                     <h2 id="ttml-preview-name">Song Name</h2>
                     <p id="ttml-preview-artist">Artist Name</p>
-                    <div class="badge">Apple Music Lossless</div>
+                    <div class="badge">Lossless Master</div>
                   </div>
                 </div>
 
@@ -561,7 +548,6 @@
         <!-- ── Download Song Page ── -->
         <div id="page-download-song" class="am-page">
           <div class="download-bg-glow"></div>
-          
           <div class="premium-downloader-container">
             <div class="glass-card premium-card">
               <div class="downloader-header">
@@ -571,13 +557,13 @@
                   </svg>
                 </div>
                 <h1 class="premium-title">Audio Downloader</h1>
-                <p class="premium-subtitle">Enter an Apple Music Song ID or Search Term to download the audio track.</p>
+                <p class="premium-subtitle">Enter a Song ID or search term to download the track.</p>
               </div>
 
               <div class="premium-input-group">
                 <div class="premium-search-box">
                   <input type="text" id="dl-song-input" placeholder="Paste Song ID or Search Term" autocomplete="off">
-                  <select id="dl-song-format" class="premium-btn format-select" style="background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); color: white; border: 1px solid rgba(255, 255, 255, 0.2); padding: 0 15px; border-radius: 8px; margin-right: 10px; cursor: pointer; outline: none; font-family: inherit;">
+                  <select id="dl-song-format" class="premium-btn format-select" style="background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); color: white; border: 1px solid rgba(255, 255, 255, 0.2); padding: 0 15px; border-radius: 8px; margin-right: 10px; cursor: pointer; outline: none;">
                     <option value="m4a">M4A (Original)</option>
                     <option value="mp3">MP3</option>
                     <option value="flac">FLAC</option>
@@ -648,7 +634,6 @@
       if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
       if (backdrop) backdrop.addEventListener('click', closeSidebar);
 
-      // Close sidebar when clicking any navigation link (on mobile)
       const navItems = document.querySelectorAll('.am-sidebar-nav .am-nav-item');
       navItems.forEach(item => {
         item.addEventListener('click', () => {
@@ -667,7 +652,6 @@
       <h2 id="prep-status">Preparing Track...</h2>
       <p id="prep-subtext">Fetching audio and metadata from secure servers</p>
     </div>
-  </div>
   </div>
 
   <script type="module" src="js/upload.js"></script>

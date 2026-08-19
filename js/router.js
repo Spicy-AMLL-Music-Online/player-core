@@ -331,6 +331,24 @@ export async function removeTrackFromPlaylist(playlistTrackId) {
   });
 }
 
+export async function updatePlaylistTrack(id, patch) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('playlist_tracks', 'readwrite');
+    const store = tx.objectStore('playlist_tracks');
+    const getReq = store.get(id);
+    getReq.onsuccess = () => {
+      const data = getReq.result;
+      if (data) {
+        Object.assign(data, patch);
+        store.put(data);
+      }
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
 export async function playPlaylist(playlistId) {
   const tracks = await getPlaylistTracks(playlistId);
   if (!tracks.length) return false;
