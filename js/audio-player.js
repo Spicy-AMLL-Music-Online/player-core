@@ -10,6 +10,13 @@ export default class AudioPlayer {
     this.masterGain = this.audioContext.createGain();
     this.masterGain.connect(this.audioContext.destination);
 
+    // Analysis tap (non-audio) so the background can react to low-frequency volume
+    this.analyser = this.audioContext.createAnalyser();
+    this.analyser.fftSize = 1024;
+    this.analyser.smoothingTimeConstant = 0.7;
+    this.masterGain.connect(this.analyser);
+    this._freqData = new Uint8Array(this.analyser.frequencyBinCount);
+
     // Channel A
     this.audioA = new Audio();
     this.audioA.crossOrigin = 'anonymous';
@@ -259,6 +266,23 @@ export default class AudioPlayer {
 
   getVolume() {
     return this.masterGain.gain.value;
+  }
+
+  /**
+   * Normalized low-frequency energy (0..1) averaged over the bass band (~30-250Hz),
+   * for driving volume-reactive backgrounds.
+   */
+  getLowFreqLevel() {
+    this.analyser.getByteFrequencyData(this._freqData);
+    const binHz = this.audioContext.sampleRate / this.analyser.fftSize;
+    const maxBin = Math.min(this._freqData.length, Math.round(250 / binHz));
+    const minBin = Math.round(30 / binHz);
+    let sum = 0, n = 0;
+    for (let i = minBin; i < maxBin; i++) {
+      sum += this._freqData[i];
+      n++;
+    }
+    return n > 0 ? sum / n / 255 : 0;
   }
 
   static formatTime(ms, negative = false) {

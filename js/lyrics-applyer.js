@@ -508,6 +508,12 @@ export function applySyllableLyrics(data, lyricsContentEl) {
       const bgWrapper = document.createElement("div");
       bgWrapper.classList.add("bg-wrapper");
 
+      // AMLL: bg that starts before the lead is prepositioned ABOVE the main line.
+      const bgFirstStart = Math.min(...line.Background.map(b => convertTime(b.StartTime)));
+      const leadFirstStart = convertTime(line.Lead.Syllables?.[0]?.StartTime ?? line.Lead.StartTime);
+      const isBgFirst = bgFirstStart < leadFirstStart;
+      if (isBgFirst) bgWrapper.classList.add("top");
+
       line.Background.forEach(bg => {
         const bgLine = document.createElement("div");
         bgLine.classList.add("line", "bg-line");
@@ -623,6 +629,10 @@ export function applySyllableLyrics(data, lyricsContentEl) {
 
               return {
                 HTMLElement: letterEl,
+                StartTime: lStart,
+                EndTime: lEnd,
+                TotalTime: letterDuration,
+                Emphasis: true,
                 BGLetter: true,
                 WordStartTime: info.wordStartTime,
                 WordEndTime: info.wordEndTime,
@@ -714,7 +724,11 @@ export function applySyllableLyrics(data, lyricsContentEl) {
         });
       });
 
-      lineElem.appendChild(bgWrapper);
+      if (isBgFirst) {
+        lineElem.insertBefore(bgWrapper, lineElem.firstChild);
+      } else {
+        lineElem.appendChild(bgWrapper);
+      }
     }
 
     // Interlude dots between lines
@@ -725,6 +739,28 @@ export function applySyllableLyrics(data, lyricsContentEl) {
         arr[index + 1].OppositeAligned, "Syllable");
     }
   });
+
+  // Extend each parent line's active window to cover trailing background vocals,
+  // so the bg line doesn't vanish while it is still being sung (Apple Music behavior).
+  // Also wire each parent line to its bg wrapper (AMLL LyricLineGroup bgSlideY spring).
+  const elToLine = new Map();
+  for (const l of LyricsObject.Types.Syllable.Lines) elToLine.set(l.HTMLElement, l);
+  for (const l of LyricsObject.Types.Syllable.Lines) {
+    if (l.ParentLineElement) {
+      const parent = elToLine.get(l.ParentLineElement);
+      if (parent && l.EndTime > parent.EndTime) {
+        parent.EndTime = l.EndTime;
+      }
+      if (parent && l.BGLine && !parent._bgWrapper) {
+        const wrapper = l.WrapperElement;
+        parent._bgWrapper = wrapper;
+        wrapper._bgHeight = wrapper.scrollHeight || wrapper.clientHeight || 0;
+        const leadStart = parent.Syllables?.Lead?.[0]?.StartTime ?? parent.StartTime;
+        const bgStart = l.Syllables?.Lead?.[0]?.StartTime ?? l.StartTime;
+        parent._isBgFirst = bgStart < leadStart;
+      }
+    }
+  }
 
   // Credits
   renderCredits(data, container);

@@ -297,6 +297,32 @@ function easeSinOut(x) {
   return Math.sin((x * Math.PI) / 2);
 }
 
+function clamp01(x) {
+  return x < 0 ? 0 : x > 1 ? 1 : x;
+}
+
+// AMLL dom/lyric-group.ts bgSlideY spring, ported as a critically-damped
+// 0→1 progress driving inline max-height, so the bg line smoothly grows into
+// the layout (pushing the next line down) and is clipped while collapsed.
+function advanceBgSlide(line, lineActive, deltaTime) {
+  const wrapper = line._bgWrapper;
+  if (!wrapper) return;
+
+  if (!line._bgSlideSpring) {
+    line._bgSlideSpring = new Spring(lineActive ? 1 : 0, 400, 40, 1);
+    line._bgSlideSpring.SetGoal(0, true);
+  }
+
+  line._bgSlideSpring.SetGoal(lineActive ? 1 : 0);
+  const progress = clamp01(line._bgSlideSpring.Step(deltaTime));
+
+  const h = wrapper._bgHeight || (wrapper._bgHeight = wrapper.scrollHeight || 0);
+  setStyleIfChanged(wrapper, 'max-height', `${(h * progress).toFixed(1)}px`);
+  setStyleIfChanged(wrapper, 'transform', `translateY(${(-8 * (1 - progress)).toFixed(1)}px) scale(${(0.96 + progress * 0.04).toFixed(3)})`);
+
+  if (wrapper.classList.contains('active') !== lineActive) wrapper.classList.toggle('active', lineActive);
+}
+
 // ── Style Cache ──
 let _styleCache = new WeakMap();
 const _styleQueue = new Map();
@@ -587,6 +613,11 @@ function animateSyllable(position, deltaTime) {
 
     const lineActive = position >= line.StartTime && position <= line.EndTime;
     const lineSung = position > line.EndTime;
+
+    // AMLL bgSlideY spring: animate the parent line's bg wrapper in/out
+    if (!line.BGLine && line._bgWrapper) {
+      advanceBgSlide(line, lineActive, deltaTime);
+    }
 
     if ((line.IsConvertedLine || line.HTMLElement.parentElement?.classList.contains("is-converted-line")) && !line.DotLine) {
       if (line.Syllables?.Lead) {

@@ -274,7 +274,7 @@
     import { initScrollManager, scrollToActiveLine, resetScrollManager, queueForceScroll, isUserScrolling } from './js/scroll-manager.js';
 
     import AudioPlayer from './js/audio-player.js';
-    import { applyDefaultBackground, applyLegacyBackground, extractColors, setKawarpPlaybackState } from './js/dynamic-bg.js';
+    import { applyDefaultBackground, applyLegacyBackground, extractColors, setKawarpPlaybackState, setKawarpVolume } from './js/dynamic-bg.js';
     import { parseAudioMetadata } from './js/metadata-parser.js';
     import { retrieveTTML } from './js/ttml-retriever.js';
     import { GeniusService } from './js/genius-service.js';
@@ -1835,6 +1835,9 @@
         const adjustedLyricsPos = lyricsPos - offset;
 
         setLyricsTime(adjustedLyricsPos, lyricsType);
+        // Feed bass energy into the dybg background (volume-reactive twist/zoom)
+        setKawarpVolume(player.getLowFreqLevel());
+
         const nowBar = document.getElementById('now-bar');
         if (nowBar) {
           nowBar.setAttribute('data-position', pos.toString());

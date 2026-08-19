@@ -150,7 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function handleAudioFiles(files) {
-    const audioExts = ['mp3', 'flac', 'wav', 'ogg', 'm4a', 'aac'];
+    const audioExts = ['mp3', 'flac', 'wav', 'ogg', 'm4a', 'aac', 'mp4', 'm4b', 'opus', 'webm'];
     const validAudio = [];
     files.forEach(f => {
       const ext = f.name.split('.').pop().toLowerCase();
