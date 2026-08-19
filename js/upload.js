@@ -825,105 +825,150 @@ function mapApiSongToLocal(song) {
 }
 
 // ── Album Detail View (Fetching via /album?album= ID) ──
-/**
- * Renders full details for an album including track preview playback,
- * composer metadata, and album copyright footer.
- */
 async function fetchAlbumDetails(albumId) {
+  listenInitialContent.classList.add('hidden');
+  searchResultsContainer.classList.add('hidden');
+  artistViewContainer.classList.add('hidden');
+  albumViewContainer.classList.remove('hidden');
+
+  albumHeader.innerHTML = `<div class="am-loading-msg">Loading Album...</div>`;
+  albumTracksGrid.innerHTML = '';
+
   try {
     const res = await fetch(`${API_BASE}/album?album=${albumId}`);
-    if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+    if (!res.ok) throw new Error(`Album fetch failed ${res.status}`);
     const data = await res.json();
 
-    // Support both direct wrapper formats
-    const albumData = data.raw_data?.data?.[0] || data.data?.[0];
-    if (!albumData) throw new Error("Album not found");
+    // The real catalog object lives at raw_data.data[0], not data.data[0]
+    const albumObj = data.raw_data?.data?.[0] || data.data?.[0] || data.results?.albums?.data?.[0];
+    if (!albumObj) throw new Error('Album not found in response');
 
-    const albumAttr = albumData.attributes || {};
-    const trackList = albumData.relationships?.tracks?.data || [];
+    const attr = albumObj.attributes || {};
+    const artUrl = attr.artwork?.url ? attr.artwork.url.replace('{w}', '600').replace('{h}', '600') : 'favicon.svg';
+    const artistId = albumObj.relationships?.artists?.data?.[0]?.id || null;
+    const artistName = attr.artistName || '';
 
-    // Parse track attributes including preview URLs and composers
-    const parsedTracks = trackList.map(track => {
-      const trackAttr = track.attributes || {};
-      const previewUrl = trackAttr.previews?.[0]?.url || null; // Track-level preview audio
+    let videoUrl = null;
+    try {
+      const animRes = await fetch(`${API_BASE}/animatedart?album=${albumId}`);
+      if (animRes.ok) {
+        const animData = await animRes.json();
+        videoUrl = animData.videoUrl || animData.url;
+      }
+    } catch (e) {
+      console.warn("No animated art found:", e);
+    }
 
-      return {
-        id: track.id,
-        title: trackAttr.name,
-        artist: trackAttr.artistName,
-        composer: trackAttr.composerName || null, // Track composers
-        durationMs: trackAttr.durationInMillis || 0,
-        trackNumber: trackAttr.trackNumber,
-        previewUrl: previewUrl,
-        artUrl: trackAttr.artwork?.url 
-          ? trackAttr.artwork.url.replace('{w}', '300').replace('{h}', '300')
-          : 'favicon.svg'
-      };
-    });
+    const year = attr.releaseDate ? new Date(attr.releaseDate).getFullYear() : '';
+    const shortDesc = attr.editorialNotes?.short || '';
+    const standardDesc = attr.editorialNotes?.standard || '';
 
-    // Render Track Table HTML
-    const tracksHTML = parsedTracks.map(track => `
-      <div class="am-track-row" data-preview="${track.previewUrl || ''}">
-        <div class="am-track-num">${track.trackNumber}</div>
-        <div class="am-track-info">
-          <div class="am-track-title">${escapeHTML(track.title)}</div>
-          <div class="am-track-sub">
-            ${escapeHTML(track.artist)}
-            ${track.composer ? ` • Composer: ${escapeHTML(track.composer)}` : ''}
-          </div>
-        </div>
-        <button class="am-preview-btn" ${!track.previewUrl ? 'disabled' : ''}>
-          ${track.previewUrl ? '▶ Preview' : 'No Preview'}
+    albumHeader.innerHTML = `
+      <div class="am-album-art-container">
+        ${videoUrl ? `<video src="${videoUrl}" autoplay loop muted playsinline class="am-album-cover"></video>` : `<img src="${artUrl}" class="am-album-cover">`}
+      </div>
+      <div class="am-album-details">
+        <h2 class="am-album-title">${escapeHTML(attr.name || 'Album')}</h2>
+        <div class="am-album-artist" id="album-artist-link" style="${artistId ? 'cursor:pointer;' : ''}">${escapeHTML(artistName)}</div>
+        <div class="am-album-meta">${escapeHTML(attr.genreNames?.[0] || 'Music')} • ${year}</div>
+        ${shortDesc ? `<p class="am-album-desc" id="album-desc-text">${escapeHTML(shortDesc)}${standardDesc && standardDesc !== shortDesc ? ` <span id="album-desc-more" style="color:#fa243c; cursor:pointer; font-weight:700;">MORE</span>` : ''}</p>` : ''}
+        <button class="premium-btn primary" id="album-play-btn" style="border-radius:100px; padding:0 32px; height:44px; display:inline-flex; align-items:center; gap:8px; width:fit-content;">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M8 5v14l11-7z"/></svg>
+          <span>Preview</span>
         </button>
-        <div class="am-track-duration">${formatDuration(track.durationMs)}</div>
-      </div>
-    `).join('');
-
-    // Update album content container
-    albumViewContent.innerHTML = `
-      <div class="am-album-header">
-        <img src="${albumAttr.artwork?.url ? albumAttr.artwork.url.replace('{w}', '400').replace('{h}', '400') : 'favicon.svg'}" class="am-album-art">
-        <div class="am-album-meta">
-          <h1>${escapeHTML(albumAttr.name)}</h1>
-          <h2>${escapeHTML(albumAttr.artistName)}</h2>
-          <p>${(albumAttr.genreNames || []).join(', ')} • ${albumAttr.releaseDate ? albumAttr.releaseDate.split('-')[0] : ''}</p>
-        </div>
-      </div>
-
-      <div class="am-tracklist">${tracksHTML}</div>
-
-      <!-- Footer Info Section -->
-      <div class="am-album-footer-info">
-        <p class="am-footer-date">Released: ${albumAttr.releaseDate || 'N/A'}</p>
-        <p class="am-footer-copyright">${escapeHTML(albumAttr.copyright || albumAttr.recordLabel || '')}</p>
       </div>
     `;
 
-    // Add audio event handling for previews
-    albumViewContent.querySelectorAll('.am-preview-btn').forEach((btn, idx) => {
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        const track = parsedTracks[idx];
-        if (track.previewUrl) {
-          playPreviewAudioQueue([track]);
+    const descMoreBtn = document.getElementById('album-desc-more');
+    if (descMoreBtn) {
+      descMoreBtn.onclick = () => {
+        const descEl = document.getElementById('album-desc-text');
+        if (descEl) descEl.textContent = standardDesc.replace(/<[^>]*>/g, '');
+      };
+    }
+
+    const artistLink = document.getElementById('album-artist-link');
+    if (artistLink && artistId) {
+      artistLink.onclick = () => openArtistView(artistId, artistName);
+    }
+
+    // Prefer the flattened parsed_tracks list; fall back to raw relationships
+    const relTracks = albumObj.relationships?.tracks?.data || [];
+    const tracks = (data.parsed_tracks && data.parsed_tracks.length > 0)
+      ? data.parsed_tracks.map(t => ({
+          id: t.id,
+          name: t.title,
+          artistName: t.artist,
+          trackNumber: t.track_number,
+          durationInMillis: t.duration_ms,
+        }))
+      : relTracks.map(t => ({
+          id: t.id,
+          name: t.attributes?.name,
+          artistName: t.attributes?.artistName,
+          trackNumber: t.attributes?.trackNumber,
+          durationInMillis: t.attributes?.durationInMillis,
+        }));
+
+    albumTracksGrid.innerHTML = tracks.map((t, idx) => `
+      <div class="am-track-row animate-fade" data-id="${t.id}">
+         <div class="am-track-num">${t.trackNumber || idx + 1}</div>
+         <div class="am-track-title">${escapeHTML(t.name || 'Unknown')}</div>
+         <div class="am-track-duration">${millisToMinutesAndSeconds(t.durationInMillis)}</div>
+         <button class="am-song-more-btn" data-id="${t.id}">•••</button>
+      </div>
+    `).join('');
+
+    albumTracksGrid.querySelectorAll('.am-track-row').forEach(row => {
+      row.onclick = (e) => {
+        if (e.target.classList.contains('am-song-more-btn')) {
+          e.stopPropagation();
+          const id = row.dataset.id;
+          const t = tracks.find(x => x.id === id);
+          showContextMenu(e, {
+            trackId: id,
+            trackName: t?.name,
+            artistName: t?.artistName || artistName,
+            collectionName: attr.name,
+            albumId,
+            artistId,
+            artworkUrl100: artUrl
+          });
+          return;
         }
+        loadTrackById(row.dataset.id);
       };
     });
+// Add footer rendering inside fetchAlbumDetails in upload.js
+const albumRawAttr = albumObj.attributes || {};
+const footerContainer = document.createElement('div');
+footerContainer.id = 'album-footer-info';
+footerContainer.className = 'am-album-footer-info';
 
-  } catch (err) {
-    console.error("Error fetching album details:", err);
-  }
+renderAlbumFooter(
+  {
+    releaseDate: albumRawAttr.releaseDate,
+    productionTeam: albumRawAttr.copyright || albumRawAttr.recordLabel
+  },
+  tracks.map(t => ({ duration: Math.floor((t.durationInMillis || 0) / 1000) }))
+);
+
+albumTracksGrid.after(document.getElementById('album-footer-info') || footerContainer);
+
+    // REPLACE WITH THIS:
+const playBtn = document.getElementById('album-play-btn');
+if (playBtn && tracks.length > 0) {
+  playBtn.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.currentAlbumTracks = tracks;
+    playPreviewAudioQueue(tracks.map(t => t.id));
+  };
 }
-
-/**
- * Format milliseconds into M:SS standard string
- */
-function formatDuration(ms) {
-  if (!ms) return '0:00';
-  const totalSeconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+  } catch (err) {
+    console.error(err);
+    albumHeader.innerHTML = `<div class="am-error-msg">Failed to load album details.</div>`;
+  }
 }
 
 // ── Open Artist View ──
