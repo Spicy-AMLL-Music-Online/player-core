@@ -1,4 +1,4 @@
-import { addTrackToQueue, clearQueue, setCurrentIndex, getPlaylists, createPlaylist, addTrackToPlaylist, getPlaylistTracks, deletePlaylist } from './router.js';
+import { addTrackToQueue, clearQueue, setCurrentIndex, getPlaylists, createPlaylist, addTrackToPlaylist, getPlaylistTracks, deletePlaylist, updatePlaylistTrack, findTrackInPlaylist } from './router.js';
 import { parseAudioMetadata } from './metadata-parser.js';
 import { robustFetch } from './network-utils.js';
 import { TTMLDownloader } from './ttml-downloader.js';
@@ -54,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Album View
   const albumViewContainer = document.getElementById('album-view-container');
+  const albumViewContent = albumViewContainer;
   const albumHeader = document.getElementById('album-header');
   const albumTracksGrid = document.getElementById('album-tracks-grid');
 
@@ -81,6 +82,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const playlistTracksGrid = document.getElementById('playlist-tracks-grid');
   const playlistBackBtn = document.getElementById('playlist-back-btn');
   const createPlaylistBtn = document.getElementById('create-playlist-btn');
+
+  // Remote playlist detail view (Apple Music playlists from search results)
+  const playlistViewContainer = document.getElementById('playlist-view-container');
+  const playlistViewContent = document.getElementById('playlist-view-content');
 
   // TTML Downloader Elements
   const fetchTtmlBtn = document.getElementById('fetch-ttml-btn');
@@ -799,31 +804,26 @@ document.addEventListener('DOMContentLoaded', () => {
         const artUrl = attr.artwork?.url ? attr.artwork.url.replace('{w}', '300').replace('{h}', '300') : 'favicon.svg';
 
         return `
-          <div class="am-standard-media-card" data-id="${pl.id}">
+          <div class="am-standard-media-card" data-id="${pl.id}" data-name="${escapeHTML(attr.name || 'Playlist')}">
             <img src="${artUrl}" loading="lazy" class="am-media-card-art">
             <div class="am-media-card-title">${escapeHTML(attr.name)}</div>
             <div class="am-media-card-sub">${escapeHTML(attr.curatorName || 'Playlist')}</div>
           </div>
         `;
       }).join('');
+
+      // Playlist cards now open the full playlist (requires /playlist endpoint)
+      playlistsSearchGrid.querySelectorAll('.am-standard-media-card').forEach(card => {
+        card.onclick = () => {
+          openPlaylistView(card.dataset.id, card.dataset.name);
+        };
+      });
     }
   }
 
 function mapApiSongToLocal(song) {
   if (!song) return null;
   const attr = song.attributes || {};
-  return {
-    trackId: song.id,
-    trackName: attr.name,
-    artistName: attr.artistName,
-    collectionName: attr.albumName,
-    // Add albumId and artistId fallback mappings:
-    albumId: song.relationships?.albums?.data?.[0]?.id || attr.albumId || null,
-    artistId: song.relationships?.artists?.data?.[0]?.id || attr.artistId || null,
-    artworkUrl100: attr.artwork?.url ? attr.artwork.url.replace('{w}', '100').replace('{h}', '100') : ''
-  };
-}
-
 // ── Album Detail View (Fetching via /album?album= ID) ──
 async function fetchAlbumDetails(albumId) {
   listenInitialContent.classList.add('hidden');
@@ -971,90 +971,206 @@ if (playBtn && tracks.length > 0) {
   }
 }
 
+function formatDuration(ms) {
+  if (!ms) return '0:00';
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+}
+
 // ── Open Artist View ──
-// Replace openArtistView in upload.js
 async function openArtistView(artistId, artistName) {
-  listenInitialContent.classList.add('hidden');
-  searchResultsContainer.classList.add('hidden');
-  albumViewContainer.classList.add('hidden');
-  artistViewContainer.classList.remove('hidden');
+  if (artistViewContainer) artistViewContainer.classList.remove('hidden');
+  if (albumViewContainer) albumViewContainer.classList.add('hidden');
+  if (playlistViewContainer) playlistViewContainer.classList.add('hidden');
+  if (listenInitialContent) listenInitialContent.classList.add('hidden');
+  if (searchResultsContainer) searchResultsContainer.classList.add('hidden');
 
   artistViewContent.innerHTML = `<div class="am-loading-msg">Fetching Artist Profile...</div>`;
 
   try {
+    // 1. Artist profile (bio / genres / artwork)
+    let attr = {};
+    let artistObj = null;
+    let albumIds = [];
+    let albums = [];
+    let songs = [];
+
     const res = await fetch(`${API_BASE}/artist?artist=${artistId}`);
-    if (!res.ok) throw new Error(`Artist fetch failed ${res.status}`);
-    const data = await res.json();
+    if (res.ok) {
+      const data = await res.json();
+      const found = Array.isArray(data.data) ? data.data[0] : (data.data || data);
+      if (found?.attributes) {
+        attr = found.attributes;
+        albumIds = (found.relationships?.albums?.data || []).slice(0, 12).map(a => a.id);
+        artistObj = found;
+      }
+    } else {
+      console.warn(`[Artist View] /artist responded ${res.status}`);
+    }
 
-    // Correctly extract artist data from array or root object
-    const artistObj = Array.isArray(data.data) ? data.data[0] : (data.data || data);
-    if (!artistObj || !artistObj.attributes) throw new Error('Artist data invalid');
-
-    const attr = artistObj.attributes;
     const displayName = attr.name || artistName;
     const artistPhoto = attr.artwork?.url
-      ? attr.artwork.url.replace('{w}', '1200').replace('{h}', '800')
+      ? attr.artwork.url.replace('{w}', '1200').replace('{h}', '630')
       : 'favicon.svg';
-      
-    const bioText = attr.artistBio || attr.editorialNotes?.standard || "No description available.";
-    const genre = attr.genreNames?.[0] || "Music";
 
-    // Extract Albums from Relationships
-    const albumRefs = artistObj.relationships?.albums?.data || [];
-    const albumIds = albumRefs.slice(0, 12).map(a => a.id);
+    // 2. Albums + songs in single parallel fan-out (no N+1 album fetches)
+    const [albumsRes, songsRes] = await Promise.all([
+      fetch(`${API_BASE}/artist/albums?artist=${artistId}&limit=50`).catch(() => null),
+      fetch(`${API_BASE}/artist/songs?artist=${artistId}&limit=20`).catch(() => null)
+    ]);
 
-    const albumResponses = await Promise.all(albumIds.map(id =>
-      fetch(`${API_BASE}/album?album=${id}`)
-        .then(r => (r.ok ? r.json() : null))
-        .catch(() => null)
-    ));
+    if (albumsRes && albumsRes.ok) {
+      const albumsData = await albumsRes.json();
+      albums = albumsData.data || [];
+    }
 
-    const albums = albumResponses
-      .map(d => d?.raw_data?.data?.[0] || d?.data?.[0])
-      .filter(Boolean);
+    if (songsRes && songsRes.ok) {
+      const songsData = await songsRes.json();
+      songs = songsData.data || [];
+    }
 
-    const albumsHTML = albums.map(a => {
-      const aAttr = a.attributes || {};
-      const art = aAttr.artwork?.url ? aAttr.artwork.url.replace('{w}', '300').replace('{h}', '300') : 'favicon.svg';
-      const y = aAttr.releaseDate ? new Date(aAttr.releaseDate).getFullYear() : '';
-      return `
-        <div class="am-standard-media-card" data-id="${a.id}">
-          <img src="${art}" loading="lazy" class="am-media-card-art">
-          <div class="am-media-card-title">${escapeHTML(aAttr.name || '')}</div>
-          <div class="am-media-card-sub">${y}</div>
-        </div>
-      `;
-    }).join('');
+    // Fallback: any album IDs embedded in the artist relationship
+    if (albumIds.length && albums.length === 0) {
+      albums = (await Promise.all(albumIds.map(async id => {
+        try {
+          const a = await fetch(`${API_BASE}/album?album=${id}`);
+          if (!a.ok) return null;
+          const d = await a.json();
+          return (d.raw_data?.data?.[0] || d.data?.[0]) || null;
+        } catch {
+          return null;
+        }
+      }))).filter(Boolean);
+    }
+
+    // 3. Render
+    const bioRaw = attr.artistBio || attr.editorialNotes?.standard || attr.editorialNotes?.short || '';
+    const bioText = bioRaw
+      ? escapeHTML(bioRaw.replace(/<[^>]*>/g, '')).replace(/&lt;br\s*\/?&gt;/gi, '<br>').replace(/&amp;nbsp;/g, ' ').replace(/\n/g, '<br>')
+      : "No description available.";
+
+    const genre = attr.genreNames?.[0] || 'Music';
+
+    const albumsHTML = albums
+      .map(a => {
+        const aAttr = a.attributes || {};
+        const art = aAttr.artwork?.url ? aAttr.artwork.url.replace('{w}', '300').replace('{h}', '300') : 'favicon.svg';
+        const y = aAttr.releaseDate ? new Date(aAttr.releaseDate).getFullYear() : '';
+        return `
+          <div class="am-standard-media-card" data-id="${a.id}">
+            <img src="${art}" loading="lazy" class="am-media-card-art">
+            <div class="am-media-card-title">${escapeHTML(aAttr.name || '')}</div>
+            <div class="am-media-card-sub">${escapeHTML(y || 'Album')}</div>
+          </div>
+        `;
+      }).join('') || '<p class="am-empty-msg">No albums found.</p>';
+
+    const songsHTML = songs
+      .map((s, i) => {
+        const sAttr = s.attributes || {};
+        const art = sAttr.artwork?.url ? sAttr.artwork.url.replace('{w}', '56').replace('{h}', '56') : 'favicon.svg';
+        return `
+          <div class="am-song-row-item" data-id="${s.id}">
+            <div class="am-song-row-num">${i + 1}</div>
+            <img src="${art}" loading="lazy" class="am-song-row-art">
+            <div class="am-song-row-info">
+              <div class="am-song-row-title">${escapeHTML(sAttr.name || '')}</div>
+              <div class="am-song-row-artist">${escapeHTML(sAttr.albumName || '')}</div>
+            </div>
+            ${sAttr.durationInMillis ? `<span class="am-song-row-duration">${formatDuration(sAttr.durationInMillis)}</span>` : ''}
+          </div>
+        `;
+      }).join('') || '<p class="am-empty-msg">No songs found.</p>';
 
     artistViewContent.innerHTML = `
-       <div class="am-artist-header" style="background-image: linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(18,18,18,1) 100%), url('${artistPhoto}'); background-size: cover; background-position: center; min-height: 240px; border-radius: 16px; margin-bottom: 20px;">
-          <div class="am-artist-name-row" style="padding: 20px;">
-              <h1 class="am-artist-name" style="color: #fff; font-size: 2rem; font-weight: 800;">${escapeHTML(displayName)}</h1>
+       <div class="am-artist-header am-artist-hero" style="background-image: linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(18,18,18,0.9) 100%), url('${artistPhoto}');">
+          <div class="am-artist-name-row">
+              <h1 class="am-artist-name">${escapeHTML(displayName)}</h1>
+              <div class="am-artist-play-btn" title="Play top song"><svg viewBox="0 0 24 24" fill="#fff" width="22" height="22"><path d="M8 5v14l11-7z"/></svg></div>
           </div>
        </div>
 
        <div class="am-about-section">
           <h3 style="color: #fff; font-size: 18px; margin-bottom: 8px;">About</h3>
           <div class="am-about-text-container" id="artist-about-text">
-            <p style="color: #d1d1d6; font-size: 14px;">${escapeHTML(bioText.replace(/<[^>]*>/g, ''))}</p>
+            <p style="color: #d1d1d6; font-size: 14px;">${bioText}</p>
           </div>
+          ${bioRaw ? '<button class="am-show-more-btn" id="about-toggle-btn">More</button>' : ''}
           <div class="am-artist-meta-grid">
             <div class="am-meta-item">
               <label>Genre</label>
               <span>${escapeHTML(genre)}</span>
+            </div>
+            <div class="am-meta-item">
+              <label>Albums</label>
+              <span>${albums.length || '—'}</span>
+            </div>
+            <div class="am-meta-item">
+              <label>Top Songs</label>
+              <span>${songs.length || '—'}</span>
             </div>
           </div>
        </div>
 
        <div class="am-search-section" style="margin-top:30px;">
           <h3 class="am-search-section-title">Albums</h3>
-          <div class="am-cards-horizontal-scroll">${albumsHTML || '<p class="am-empty-msg">No albums found</p>'}</div>
+          <div class="am-cards-horizontal-scroll">${albumsHTML}</div>
+       </div>
+
+       <div class="am-search-section" style="margin-top:30px; margin-bottom: 40px;">
+          <h3 class="am-search-section-title">Popular Songs</h3>
+          <div class="am-songs-flex-grid">${songsHTML}</div>
        </div>
     `;
 
+    // About toggle
+    const toggleBtn = artistViewContent.querySelector('#about-toggle-btn');
+    const textContainer = artistViewContent.querySelector('.am-about-text-container');
+    if (toggleBtn && textContainer) {
+      toggleBtn.addEventListener('click', () => {
+        const isExpanded = textContainer.classList.toggle('expanded');
+        toggleBtn.textContent = isExpanded ? 'Less' : 'More';
+      });
+    }
+
+    // Albums → album detail
     artistViewContent.querySelectorAll('.am-standard-media-card').forEach(card => {
       card.onclick = () => fetchAlbumDetails(card.dataset.id);
     });
+
+    // Top songs → play (load the track)
+    artistViewContent.querySelectorAll('.am-song-row-item').forEach(row => {
+      row.onclick = (e) => {
+        const sid = row.dataset.id;
+        const song = songs.find(s => s.id === sid);
+        const sAttr = song?.attributes || {};
+        loadRemoteTrack({
+          trackId: sid,
+          trackName: sAttr.name,
+          artistName: sAttr.artistName,
+          collectionName: sAttr.albumName,
+          artworkUrl100: sAttr.artwork?.url ? sAttr.artwork.url.replace('{w}', '100').replace('{h}', '100') : ''
+        });
+      };
+    });
+
+    // Play top song
+    const playBtn = artistViewContent.querySelector('.am-artist-play-btn');
+    if (playBtn && songs.length > 0) {
+      playBtn.onclick = (e) => {
+        e.stopPropagation();
+        const sAttr = songs[0].attributes || {};
+        loadRemoteTrack({
+          trackId: songs[0].id,
+          trackName: sAttr.name,
+          artistName: sAttr.artistName,
+          collectionName: sAttr.albumName,
+          artworkUrl100: sAttr.artwork?.url ? sAttr.artwork.url.replace('{w}', '100').replace('{h}', '100') : ''
+        });
+      };
+    }
 
   } catch (err) {
     console.error(err);
@@ -1179,6 +1295,366 @@ if (ctxViewArtist) {
         navigator.clipboard?.writeText(id.toString()).then(() => alert(`Song ID ${id} copied!`));
       }
     };
+  }
+
+  // ═══════════════════════════════════════════════
+  // PLAYLISTS (local IndexedDB + remote Apple Music)
+  // ═══════════════════════════════════════════════
+
+  if (ctxAddPlaylist) {
+    ctxAddPlaylist.onclick = () => {
+      if (contextMenuTrack) openPlaylistModal();
+    };
+  }
+
+  if (ctxFavorite) {
+    ctxFavorite.onclick = async () => {
+      if (!contextMenuTrack) return;
+      try {
+        let playlists = await getPlaylists();
+        let favPlaylist = playlists.find(p => p.name === 'Favorites');
+        if (!favPlaylist) {
+          const id = await createPlaylist('Favorites');
+          favPlaylist = { id, name: 'Favorites' };
+        }
+        await addToPlaylistProcess(favPlaylist.id, contextMenuTrack, true);
+        alert('Added to Favorites!');
+      } catch (err) {
+        alert('Could not add to Favorites: ' + err.message);
+      }
+    };
+  }
+
+  if (closePlaylistModal) {
+    closePlaylistModal.onclick = () => playlistModal.classList.add('hidden');
+  }
+
+  if (createPlaylistBtn) {
+    createPlaylistBtn.onclick = async () => {
+      const name = prompt("Playlist name:");
+      if (name) {
+        await createPlaylist(name);
+        renderPlaylistsPage();
+      }
+    };
+  }
+
+  if (modalCreatePlaylistBtn) {
+    modalCreatePlaylistBtn.onclick = async () => {
+      const name = prompt("Enter new playlist name:");
+      if (name) {
+        await createPlaylist(name);
+        openPlaylistModal();
+      }
+    };
+  }
+
+  if (playlistBackBtn) {
+    playlistBackBtn.onclick = () => renderPlaylistsPage();
+  }
+
+  async function openPlaylistModal() {
+    if (!playlistModal || !playlistOptionsList) return;
+    const playlists = await getPlaylists();
+
+    const renderOptions = () => {
+      playlistOptionsList.innerHTML = playlists.map(p => `
+        <div class="playlist-option" data-id="${p.id}">${escapeHTML(p.name)}</div>
+      `).join('') || '<p style="text-align:center; padding:10px; opacity:0.5;">No playlists created yet.</p>';
+
+      playlistOptionsList.querySelectorAll('.playlist-option').forEach(opt => {
+        opt.onclick = async () => {
+          const pId = parseInt(opt.dataset.id, 10);
+          if (contextMenuTrack) {
+            try {
+              await addToPlaylistProcess(pId, contextMenuTrack);
+            } catch (err) {
+              alert("Failed to save track: " + err.message);
+            }
+          }
+          playlistModal.classList.add('hidden');
+        };
+      });
+    };
+
+    renderOptions();
+    playlistModal.classList.remove('hidden');
+  }
+
+  async function addToPlaylistProcess(pId, track, quiet = false) {
+    if (prepOverlay) {
+      prepOverlay.classList.add('active');
+      prepStatus.textContent = "Saving to Playlist...";
+    }
+    try {
+      const trackId = track.trackId || track.id;
+      const existing = await findTrackInPlaylist(pId, trackId, track.trackName, track.artistName);
+      if (existing) {
+        if (prepOverlay) prepOverlay.classList.remove('active');
+        if (!quiet) alert('Track already in this playlist.');
+        return;
+      }
+
+      const audioUrl = `${API_BASE}/download?song=${trackId}`;
+      const response = await robustFetch(audioUrl, { skipProxy: true });
+      const audioBuffer = await response.arrayBuffer();
+
+      await addTrackToPlaylist(pId, {
+        name: track.trackName || track.title || track.name,
+        artist: track.artistName || track.artist || 'Unknown Artist',
+        album: track.collectionName || track.album || '',
+        artUrl: (track.artworkUrl100 || track.artUrl || '').replace('100x100', '600x600'),
+        type: isMP4Buffer(audioBuffer) ? 'audio/mp4' : 'audio/mpeg',
+        ttml: '__AUTO_FETCH__',
+        amTrackId: trackId
+      }, audioBuffer);
+
+      if (prepOverlay) prepOverlay.classList.remove('active');
+      if (!quiet) alert('Added to playlist!');
+    } catch (err) {
+      console.error("Failed to add to playlist:", err);
+      if (prepOverlay) prepOverlay.classList.remove('active');
+      throw err;
+    }
+  }
+
+  // Local playlist pages
+  async function renderPlaylistsPage() {
+    const playlists = await getPlaylists();
+    if (!playlistsGrid) return;
+    if (playlistDetail) playlistDetail.classList.add('hidden');
+    if (playlistsGrid) playlistsGrid.classList.remove('hidden');
+
+    playlistsGrid.innerHTML = playlists.map(p => `
+      <div class="playlist-card animate-fade" data-id="${p.id}">
+        <div class="playlist-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 10h12v2H4v-2zm0-4h12v2H4V6zm0 8h8v2H4v-2zm10 0v6l5-3-5-3z" /></svg>
+        </div>
+        <h4>${escapeHTML(p.name)}</h4>
+        <button class="am-text-btn delete-playlist" style="margin-top:10px; font-size:0.8rem;" data-id="${p.id}">Delete</button>
+      </div>
+    `).join('') || '<div class="am-empty-msg" style="grid-column:1/-1;">No playlists yet. Create one to get started.</div>';
+
+    playlistsGrid.querySelectorAll('.playlist-card').forEach(card => {
+      card.onclick = (e) => {
+        if (e.target.classList.contains('delete-playlist')) {
+          const id = parseInt(e.target.dataset.id, 10);
+          deletePlaylist(id).then(() => renderPlaylistsPage());
+          return;
+        }
+        const id = parseInt(card.dataset.id, 10);
+        const p = playlists.find(x => x.id === id);
+        if (p) showPlaylistDetail(p);
+      };
+    });
+  }
+
+  async function showPlaylistDetail(playlist) {
+    if (playlistsGrid) playlistsGrid.classList.add('hidden');
+    if (playlistDetail) playlistDetail.classList.remove('hidden');
+    if (playlistDetailTitle) playlistDetailTitle.textContent = playlist.name || 'Playlist';
+    if (playlistTracksGrid) playlistTracksGrid.innerHTML = '<div class="am-loading-msg">Loading tracks...</div>';
+
+    const tracks = await getPlaylistTracks(playlist.id);
+    if (!tracks.length) {
+      if (playlistTracksGrid) playlistTracksGrid.innerHTML = '<div class="am-error-msg">Playlist is empty.</div>';
+      return;
+    }
+
+    renderTrackGrid(playlistTracksGrid, tracks, false);
+  }
+
+  async function renderFavoritesPage() {
+    const favoriteGrid = document.getElementById('favorite-tracks-grid');
+    if (!favoriteGrid) return;
+    favoriteGrid.innerHTML = '<div class="am-loading-msg">Loading favorites...</div>';
+
+    const playlists = await getPlaylists();
+    const favPlaylist = playlists.find(p => p.name === 'Favorites');
+    if (!favPlaylist) {
+      favoriteGrid.innerHTML = '<div class="am-error-msg">No favorite songs yet. Use "Add to Favorites" on a song.</div>';
+      return;
+    }
+    const tracks = await getPlaylistTracks(favPlaylist.id);
+    if (!tracks.length) {
+      favoriteGrid.innerHTML = '<div class="am-error-msg">No favorite songs yet.</div>';
+    } else {
+      renderTrackGrid(favoriteGrid, tracks, false);
+    }
+  }
+
+  async function renderRecentPage() {
+    const recentGrid = document.getElementById('recent-tracks-grid');
+    if (!recentGrid) return;
+    const recentTracks = JSON.parse(localStorage.getItem('spicy_recent_tracks') || '[]');
+    if (!recentTracks.length) {
+      recentGrid.innerHTML = '<div class="am-error-msg">No recently played tracks.</div>';
+    } else {
+      renderTrackGrid(recentGrid, recentTracks, true);
+    }
+  }
+
+  /**
+   * Renders a grid of track cards. For local playlist tracks the audio buffer
+   * may be missing (quota / older saves) so it re-downloads on demand via the
+   * /download endpoint instead of silently doing nothing.
+   */
+  async function renderTrackGrid(container, tracks, isRemote = false) {
+    if (!container) return;
+    container.innerHTML = tracks.map((t, i) => {
+      const safeName = escapeHTML(t.name || t.trackName || t.title || 'Unknown');
+      const safeArtist = escapeHTML(t.artist || t.artistName || 'Unknown');
+      return `
+      <div class="trending-card animate-fade" data-index="${i}" data-id="${t.id || t.trackId || ''}">
+        <div class="trending-art">
+          <img src="${t.artUrl || t.artworkUrl100 || 'favicon.svg'}" loading="lazy" alt="${safeName}">
+        </div>
+        <div class="trending-info">
+          <h4>${safeName}</h4>
+          <p>${safeArtist}</p>
+        </div>
+      </div>
+    `;
+    }).join('');
+
+    container.querySelectorAll('.trending-card').forEach(card => {
+      card.onclick = async () => {
+        const idx = parseInt(card.dataset.index, 10);
+        const track = tracks[idx];
+        if (!track) return;
+
+        if (prepOverlay) {
+          prepOverlay.classList.add('active');
+          prepStatus.textContent = "Loading Tracks...";
+        }
+
+        try {
+          await clearQueue();
+
+          for (let i = 0; i < tracks.length; i++) {
+            const t = tracks[i];
+            let buffer = t.buffer;
+
+            // Re-download missing buffers so playlists always open/play
+            if (!buffer && (t.amTrackId || t.trackId)) {
+              prepStatus.textContent = `Fetching ${i + 1}/${tracks.length}: ${t.name || t.trackName || ''}...`;
+              const trackId = t.amTrackId || t.trackId;
+              const audioUrl = `${API_BASE}/download?song=${trackId}`;
+              const resp = await robustFetch(audioUrl, { skipProxy: true });
+              buffer = await resp.arrayBuffer();
+
+              if (t.id && (t.amTrackId || t.trackId)) {
+                await updatePlaylistTrack(t.id, {
+                  buffer,
+                  type: isMP4Buffer(buffer) ? 'audio/mp4' : 'audio/mpeg'
+                });
+              }
+            }
+
+            const metadata = {
+              name: t.name || t.trackName || t.title || 'Unknown',
+              artist: t.artist || t.artistName || 'Unknown Artist',
+              album: t.album || t.collectionName || '',
+              artUrl: (t.artUrl || t.artworkUrl100 || 'favicon.svg').replace('100x100', '600x600'),
+              type: t.type || (buffer ? (isMP4Buffer(buffer) ? 'audio/mp4' : 'audio/mpeg') : 'audio/mpeg'),
+              ttml: t.ttml || '__AUTO_FETCH__',
+              amTrackId: t.amTrackId || t.trackId || null
+            };
+            await addTrackToQueue(buffer || null, metadata);
+          }
+
+          setCurrentIndex(idx);
+          window.location.href = 'player.html';
+        } catch (err) {
+          console.error("Failed to load track grid:", err);
+          if (prepOverlay) prepOverlay.classList.remove('active');
+          alert('Error loading tracks: ' + err.message);
+        }
+      };
+    });
+  }
+
+  // ── Remote Apple Music playlist view (search results → /playlist endpoint) ──
+  async function openPlaylistView(playlistId, playlistName) {
+    if (!playlistViewContainer) return;
+
+    if (artistViewContainer) artistViewContainer.classList.add('hidden');
+    if (albumViewContainer) albumViewContainer.classList.add('hidden');
+    if (listenInitialContent) listenInitialContent.classList.add('hidden');
+    if (searchResultsContainer) searchResultsContainer.classList.add('hidden');
+    playlistViewContainer.classList.remove('hidden');
+
+    playlistViewContent.innerHTML = '<div class="am-loading-msg">Fetching Playlist...</div>';
+
+    try {
+      const res = await fetch(`${API_BASE}/playlist?playlist=${playlistId}&limit=100`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const tracks = data.parsed_tracks || [];
+      const name = data.name || playlistName;
+      const curator = data.curator_name || 'Apple Music';
+      const description = data.description || '';
+      const art = data.artwork_url || 'favicon.svg';
+
+      const tracksHTML = tracks.map((t, i) => `
+        <div class="am-track-row" data-id="${t.id}">
+          <div class="am-track-num">${i + 1}</div>
+          ${t.artwork_url ? `<img src="${t.artwork_url.replace('600x600', '56x56')}" class="am-song-row-art" alt="">` : ''}
+          <div class="am-track-info">
+            <div class="am-track-title">${escapeHTML(t.title || '')}</div>
+            <div class="am-track-sub">${escapeHTML(t.artist || '')}${t.album ? ' • ' + escapeHTML(t.album) : ''}</div>
+          </div>
+          ${t.is_explicit ? '<span class="am-explicit-tag">E</span>' : ''}
+          <div class="am-track-duration">${formatDuration(t.duration_ms)}</div>
+        </div>
+      `).join('') || '<p class="am-empty-msg">This playlist has no tracks.</p>';
+
+      playlistViewContent.innerHTML = `
+        <div class="am-album-header am-detail-header am-playlist-header">
+          <img src="${art}" class="am-album-art" alt="">
+          <div class="am-album-meta am-detail-meta">
+            <div class="am-detail-kicker">Playlist</div>
+            <h1 class="am-detail-title">${escapeHTML(name)}</h1>
+            <h2 class="am-detail-artist">${escapeHTML(curator)}</h2>
+            <p class="am-detail-sub">${tracks.length} Songs</p>
+            ${description ? `<p class="am-detail-desc">${escapeHTML(description.replace(/<[^>]*>/g, ''))}</p>` : ''}
+          </div>
+        </div>
+
+        <div class="am-tracklist">${tracksHTML}</div>
+
+        <div class="am-album-footer-info">
+          <p class="am-footer-date">${escapeHTML(curator)} • ${tracks.length} songs</p>
+        </div>
+      `;
+
+      // Preview / play each track
+      const playable = tracks.map(t => ({
+        id: t.id,
+        name: t.title,
+        artistName: t.artist,
+        artUrl: t.artwork_url,
+        durationMs: t.duration_ms
+      }));
+
+      playlistViewContent.querySelectorAll('.am-track-row').forEach((row, idx) => {
+        row.onclick = () => {
+          const track = playable[idx];
+          if (!track) return;
+          // Deep-link to a valid item by loading the full track (download)
+          loadRemoteTrack({
+            trackId: track.id,
+            trackName: track.name,
+            artistName: track.artistName,
+            collectionName: name,
+            artworkUrl100: track.artUrl ? track.artUrl.replace('600x600', '100x100') : ''
+          });
+        };
+      });
+    } catch (err) {
+      console.error("Failed to load playlist:", err);
+      playlistViewContent.innerHTML = `<div class="am-error-msg">Failed to load playlist: ${err.message}</div>`;
+    }
   }
 
   // ── TTML Downloader Logic ──

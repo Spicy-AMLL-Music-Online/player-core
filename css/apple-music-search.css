@@ -786,3 +786,282 @@
     height: 200px;
   }
 }
+
+/* ══════════════════════════════════════════════════════════
+   ARTIST / ALBUM / PLAYLIST DETAIL VIEWS  (Apple Music style)
+   Loaded last so it overrides the older upload.css blocks.
+   ══════════════════════════════════════════════════════════ */
+
+/* Artist view: full-width, left aligned (fix centering bug) */
+.am-artist-view,
+.am-playlist-view {
+  display: block;
+  width: 100%;
+}
+
+.am-artist-view #artist-view-content,
+.am-playlist-view #playlist-view-content {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Hero banner header for artist / playlist / album detail */
+.am-artist-header {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  text-align: left;
+  min-height: 280px;
+  border-radius: 16px;
+  margin-bottom: 20px;
+  background-size: cover;
+  background-position: center;
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+.am-artist-name-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: 16px;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+}
+
+.am-artist-name {
+  font-size: clamp(2rem, 5vw, 3.25rem);
+  font-weight: 800;
+  line-height: 1.05;
+  color: #fff;
+  margin: 0;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.45);
+}
+
+.am-artist-play-btn {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  border-radius: 50%;
+  background: #fa243c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(250, 36, 60, 0.45);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.am-artist-play-btn:hover {
+  transform: scale(1.06);
+  box-shadow: 0 10px 30px rgba(250, 36, 60, 0.6);
+}
+
+/* Common detail header (album + playlist) */
+.am-detail-header {
+  align-items: flex-end;
+  margin-bottom: 28px;
+}
+
+.am-detail-header .am-album-art {
+  width: clamp(160px, 20vw, 220px);
+  height: clamp(160px, 20vw, 220px);
+  border-radius: 14px;
+  object-fit: cover;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+}
+
+.am-detail-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.am-detail-kicker {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #fa243c;
+  margin-bottom: 6px;
+}
+
+.am-detail-title {
+  font-size: clamp(1.6rem, 4vw, 2.6rem);
+  font-weight: 800;
+  line-height: 1.1;
+  margin: 0 0 6px 0;
+  color: #fff;
+}
+
+.am-detail-artist {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #fa243c;
+  margin: 0 0 8px 0;
+}
+
+.am-detail-sub {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0 0 12px 0;
+}
+
+.am-detail-desc {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.55;
+  max-width: 640px;
+  margin: 0 0 12px 0;
+}
+
+/* Producer / record label "tag" */
+.am-producer-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(250, 36, 60, 0.16);
+  border: 1px solid rgba(250, 36, 60, 0.35);
+  padding: 6px 12px;
+  border-radius: 100px;
+  width: fit-content;
+  margin-top: 4px;
+}
+
+/* Track lists (album / playlist) */
+.am-tracklist {
+  display: flex;
+  flex-direction: column;
+}
+
+.am-track-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.am-track-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.am-track-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.am-track-sub {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.45);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.am-preview-btn {
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 100px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.am-preview-btn:hover:not(:disabled) {
+  background: rgba(250, 36, 60, 0.25);
+  border-color: rgba(250, 36, 60, 0.5);
+}
+
+.am-preview-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.am-explicit-tag {
+  flex-shrink: 0;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.12);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.am-song-row-num {
+  width: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.4);
+  flex-shrink: 0;
+}
+
+.am-song-row-art {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.am-song-row-duration {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.45);
+  flex-shrink: 0;
+}
+
+/* Album footer (release info + producer label) */
+.am-album-footer-info {
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.45);
+  line-height: 1.7;
+}
+
+.am-footer-date,
+.am-footer-copyright {
+  margin: 0;
+}
+
+.am-footer-copyright {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* Responsive tweaks for detail views */
+@media (max-width: 768px) {
+  .am-artist-header {
+    min-height: 200px;
+    padding: 16px;
+  }
+  .am-detail-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .am-detail-header .am-album-art {
+    width: 160px;
+    height: 160px;
+  }
+  .am-track-row {
+    padding: 12px 10px;
+    gap: 10px;
+  }
+  .am-preview-btn {
+    display: none;
+  }
+}
