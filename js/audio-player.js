@@ -17,6 +17,12 @@ export default class AudioPlayer {
     this.masterGain.connect(this.analyser);
     this._freqData = new Uint8Array(this.analyser.frequencyBinCount);
 
+    // Beat/onset detector state (drives the background's low-freq reaction)
+    this._bassLevel = 0;
+    this._beatFlux = [];
+    this._pulse = 0;
+    this._lastBeatAt = 0;
+
     // Channel A
     this.audioA = new Audio();
     this.audioA.crossOrigin = 'anonymous';
@@ -160,6 +166,9 @@ export default class AudioPlayer {
   setSource(url) {
     this._silenceChannel(this._inactiveAudio, this._inactiveGain);
     this._crossfadeTriggered = false;
+    this._pulse = 0;
+    this._lastBass = null;
+    this._lastBeatAt = 0;
 
     this.activeGain.gain.cancelScheduledValues(this.audioContext.currentTime);
     this.activeGain.gain.setValueAtTime(1, this.audioContext.currentTime);
@@ -269,10 +278,22 @@ export default class AudioPlayer {
   }
 
   /**
-   * Normalized low-frequency energy (0..1) averaged over the bass band (~30-250Hz),
-   * for driving volume-reactive backgrounds.
+   * Beat-reactive low-frequency level (0..1).
+   *
+   * Instead of tracking raw bass loudness (which just rises/falls with the
+   * mix), this runs a crude onset detector over the bass band (~30-250Hz)
+   * and returns a pulse that jumps to ~1 on each kick/beat hit and then
+   * decays in time for the next hit. A small ambient floor keeps the effect
+   * moving during sparse passages.
    */
   getLowFreqLevel() {
+    // Freeze the decay when playback stops so the effect dies out.
+    if (!this.isPlaying) {
+      this._pulse = (this._pulse || 0) * 0.85;
+      this._lastBass = null;
+      return this._pulse;
+    }
+
     this.analyser.getByteFrequencyData(this._freqData);
     const binHz = this.audioContext.sampleRate / this.analyser.fftSize;
     const maxBin = Math.min(this._freqData.length, Math.round(250 / binHz));
@@ -282,7 +303,37 @@ export default class AudioPlayer {
       sum += this._freqData[i];
       n++;
     }
-    return n > 0 ? sum / n / 255 : 0;
+    const level = n > 0 ? sum / n / 255 : 0;
+
+    // Onset = positive change in bass energy (flux). The analyser's
+    // smoothing smears transients, but kick hits still produce a clear rise.
+    const flux = Math.max(0, level - (this._lastBass ?? level));
+    this._lastBass = level;
+
+    // Adaptive threshold: a beat is a flux jump well above the recent noise.
+    const buf = this._beatFlux;
+    buf.push(flux);
+    if (buf.length > 64) buf.shift();
+    let bsum = 0;
+    for (const v of buf) bsum += v;
+    const mean = bsum / buf.length;
+    let vsum = 0;
+    for (const v of buf) vsum += (v - mean) ** 2;
+    const std = Math.sqrt(vsum / buf.length);
+    const minFlux = 0.02;
+    const threshold = mean + Math.max(minFlux, 0.7 * std);
+
+    const now = performance.now();
+    if (flux > threshold && flux > minFlux && now - this._lastBeatAt > 90) {
+      this._pulse = 1;
+      this._lastBeatAt = now;
+    }
+
+    // Exponential decay: -100% in ~50 frames (~0.8s), roughly one kick at 120BPM.
+    this._pulse *= Math.pow(0.04, 1 / 50);
+
+    // Ambient floor keeps subtle motion between hits; the pulse dominates.
+    return Math.min(1, Math.max(this._pulse, level * 0.18));
   }
 
   static formatTime(ms, negative = false) {
