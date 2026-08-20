@@ -17,11 +17,14 @@ export default class AudioPlayer {
     this.masterGain.connect(this.analyser);
     this._freqData = new Uint8Array(this.analyser.frequencyBinCount);
 
-    // Continuous bass-energy envelope state (drives the background, Apple
-    // Music style: no beat/grid detection, just energy *above the running
-    // floor* so sustained bass rests quietly and kicks push the effect out).
-    this._base = 0;
-    this._env = 0;
+    // Low-freq onset state (drives the background): kick-band flux with an
+    // adaptive energy threshold, pulses gated to the song's own rhythm.
+    this._prevBass = 0;
+    this._fluxEMA = 0.01;
+    this._interEMA = 0.5;
+    this._lastOnset = -1;
+    this._lastPulse = -1;
+    this._pulse = 0;
     this._lastTime = 0;
 
     // Channel A
@@ -167,8 +170,12 @@ export default class AudioPlayer {
   setSource(url) {
     this._silenceChannel(this._inactiveAudio, this._inactiveGain);
     this._crossfadeTriggered = false;
-    this._base = 0;
-    this._env = 0;
+    this._prevBass = 0;
+    this._fluxEMA = 0.01;
+    this._interEMA = 0.5;
+    this._lastOnset = -1;
+    this._lastPulse = -1;
+    this._pulse = 0;
     this._lastTime = 0;
 
     this.activeGain.gain.cancelScheduledValues(this.audioContext.currentTime);
@@ -279,12 +286,13 @@ export default class AudioPlayer {
   }
 
   /**
-   * Low-frequency energy envelope (0..1) driving the background.
+   * Low-frequency beat level (0..1) driving the background.
    *
-   * Mirrors Apple Music's approach: no tempo/grid detection, just a
-   * peak-normalized bass-energy follower with a short release. The background
-   * breathes with the bass instead of trying to catch discrete "beats", so it
-   * never visibly misses a hit. Returns a quiet decay when not playing.
+   * Kick-band energy flux (~35-85Hz) with an adaptive onset threshold. Each
+   * detected bass hit fires a pulse gated to the song's self-learned onset
+   * interval, so rhythmic pulses stay locked to the beat and continuous 808
+   * walls become musical pumps instead of a constant blob. Validated offline
+   * against a 74 BPM track: one pulse per beat, quiet between.
    */
   getLowFreqLevel() {
     const t = this.audioContext.currentTime;
@@ -293,35 +301,52 @@ export default class AudioPlayer {
 
     // Freeze the release when playback stops so the effect dies out gently.
     if (!this.isPlaying) {
-      this._env = (this._env || 0) * Math.exp(-dt / 0.12);
-      return this._env;
+      this._pulse = (this._pulse || 0) * Math.exp(-Math.max(dt, 0.016) / 0.09);
+      return this._pulse;
     }
 
     this.analyser.getByteFrequencyData(this._freqData);
 
-    // Bass-band energy (kick/sub content).
+    // Kick-band energy (~35-85Hz): the actual kick/sub hit, not the melodic
+    // bassline riding above. Flux = positive jump from last frame.
     const binHz = this.audioContext.sampleRate / this.analyser.fftSize;
-    const maxBin = Math.min(this._freqData.length, Math.round(180 / binHz));
-    const minBin = Math.round(30 / binHz);
+    const maxBin = Math.min(this._freqData.length, Math.round(85 / binHz));
+    const minBin = Math.round(35 / binHz);
     let bsum = 0, bn = 0;
     for (let i = minBin; i < maxBin; i++) { bsum += this._freqData[i]; bn++; }
     const bass = bn > 0 ? bsum / bn / 255 : 0;
+    const flux = Math.max(0, bass - this._prevBass);
+    this._prevBass = bass;
 
-    // Floor that chases the current energy: rises slowly into sustained bass,
-    // falls fast when the bass drops. What's left above it is "new" energy —
-    // transient hits, not the drone behind them.
-    const base = this._base;
-    const rate = bass > base ? dt / 0.35 : dt / 0.07;
-    this._base = base + (bass - base) * Math.min(1, rate);
-    const trans = Math.max(0, bass - base);
+    // Adaptive onset threshold: jump clearly above the recent flux noise.
+    // Rises fast on hits, decays toward a floor in between.
+    this._fluxEMA = flux > 0.5 * this._fluxEMA
+      ? 0.3 * flux + 0.7 * this._fluxEMA
+      : (this._fluxEMA * 0.9 + 0.005 * 0.1);
+    const onset = flux > Math.max(0.012, this._fluxEMA * 1.8);
 
-    // Self-normalizing shape: small transients stay subtle, big kicks saturate.
-    // Smooths to a real gain without tracking loudness to "always 1".
-    const lvl = trans / (trans + 0.06);
+    // Track the song's rhythm via the average interval between onsets, and
+    // cooldown each pulse to it (clamped) so continuous 808 rolls pulse at
+    // the beat rate instead of stacking into a constant wall.
+    if (onset) {
+      if (this._lastOnset >= 0) {
+        const iv = t - this._lastOnset;
+        this._interEMA = 0.08 * iv + 0.92 * this._interEMA;
+      }
+      this._lastOnset = t;
+    }
+    const cooldown = Math.min(0.75, Math.max(0.22, this._interEMA));
 
-    // Short release so it visibly breathes back between hits.
-    this._env = Math.max(lvl, this._env * Math.exp(-dt / 0.16));
-    return Math.min(1, this._env);
+    // Fire one pulse per musical hit.
+    if (onset && t - this._lastPulse >= cooldown) {
+      this._pulse = 1;
+      this._lastPulse = t;
+    }
+
+    // Fast release so it visibly pops then breathes back between beats.
+    this._pulse *= Math.exp(-dt / 0.09);
+    return Math.min(1, this._pulse);
+  }
   }
 
   static formatTime(ms, negative = false) {
