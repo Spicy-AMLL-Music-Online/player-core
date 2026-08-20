@@ -10,18 +10,19 @@ export default class AudioPlayer {
     this.masterGain = this.audioContext.createGain();
     this.masterGain.connect(this.audioContext.destination);
 
-    // Analysis tap (non-audio) so the background can react to low-frequency volume
+    // Analysis tap (non-audio) so the background can react to low-frequency energy
     this.analyser = this.audioContext.createAnalyser();
     this.analyser.fftSize = 1024;
-    this.analyser.smoothingTimeConstant = 0.7;
+    this.analyser.smoothingTimeConstant = 0.6;
     this.masterGain.connect(this.analyser);
     this._freqData = new Uint8Array(this.analyser.frequencyBinCount);
 
-    // Beat/onset detector state (drives the background's low-freq reaction)
-    this._bassLevel = 0;
-    this._beatFlux = [];
-    this._pulse = 0;
-    this._lastBeatAt = 0;
+    // Continuous bass-energy envelope state (drives the background, Apple
+    // Music style: no beat/grid detection, just energy *above the running
+    // floor* so sustained bass rests quietly and kicks push the effect out).
+    this._base = 0;
+    this._env = 0;
+    this._lastTime = 0;
 
     // Channel A
     this.audioA = new Audio();
@@ -166,9 +167,9 @@ export default class AudioPlayer {
   setSource(url) {
     this._silenceChannel(this._inactiveAudio, this._inactiveGain);
     this._crossfadeTriggered = false;
-    this._pulse = 0;
-    this._lastBass = null;
-    this._lastBeatAt = 0;
+    this._base = 0;
+    this._env = 0;
+    this._lastTime = 0;
 
     this.activeGain.gain.cancelScheduledValues(this.audioContext.currentTime);
     this.activeGain.gain.setValueAtTime(1, this.audioContext.currentTime);
@@ -278,62 +279,49 @@ export default class AudioPlayer {
   }
 
   /**
-   * Beat-reactive low-frequency level (0..1).
+   * Low-frequency energy envelope (0..1) driving the background.
    *
-   * Instead of tracking raw bass loudness (which just rises/falls with the
-   * mix), this runs a crude onset detector over the bass band (~30-250Hz)
-   * and returns a pulse that jumps to ~1 on each kick/beat hit and then
-   * decays in time for the next hit. A small ambient floor keeps the effect
-   * moving during sparse passages.
+   * Mirrors Apple Music's approach: no tempo/grid detection, just a
+   * peak-normalized bass-energy follower with a short release. The background
+   * breathes with the bass instead of trying to catch discrete "beats", so it
+   * never visibly misses a hit. Returns a quiet decay when not playing.
    */
   getLowFreqLevel() {
-    // Freeze the decay when playback stops so the effect dies out.
+    const t = this.audioContext.currentTime;
+    const dt = this._lastTime ? Math.min(0.5, t - this._lastTime) : 0.016;
+    this._lastTime = t;
+
+    // Freeze the release when playback stops so the effect dies out gently.
     if (!this.isPlaying) {
-      this._pulse = (this._pulse || 0) * 0.85;
-      this._lastBass = null;
-      return this._pulse;
+      this._env = (this._env || 0) * Math.exp(-dt / 0.12);
+      return this._env;
     }
 
     this.analyser.getByteFrequencyData(this._freqData);
+
+    // Bass-band energy (kick/sub content).
     const binHz = this.audioContext.sampleRate / this.analyser.fftSize;
-    const maxBin = Math.min(this._freqData.length, Math.round(250 / binHz));
+    const maxBin = Math.min(this._freqData.length, Math.round(180 / binHz));
     const minBin = Math.round(30 / binHz);
-    let sum = 0, n = 0;
-    for (let i = minBin; i < maxBin; i++) {
-      sum += this._freqData[i];
-      n++;
-    }
-    const level = n > 0 ? sum / n / 255 : 0;
+    let bsum = 0, bn = 0;
+    for (let i = minBin; i < maxBin; i++) { bsum += this._freqData[i]; bn++; }
+    const bass = bn > 0 ? bsum / bn / 255 : 0;
 
-    // Onset = positive change in bass energy (flux). The analyser's
-    // smoothing smears transients, but kick hits still produce a clear rise.
-    const flux = Math.max(0, level - (this._lastBass ?? level));
-    this._lastBass = level;
+    // Floor that chases the current energy: rises slowly into sustained bass,
+    // falls fast when the bass drops. What's left above it is "new" energy —
+    // transient hits, not the drone behind them.
+    const base = this._base;
+    const rate = bass > base ? dt / 0.35 : dt / 0.07;
+    this._base = base + (bass - base) * Math.min(1, rate);
+    const trans = Math.max(0, bass - base);
 
-    // Adaptive threshold: a beat is a flux jump well above the recent noise.
-    const buf = this._beatFlux;
-    buf.push(flux);
-    if (buf.length > 64) buf.shift();
-    let bsum = 0;
-    for (const v of buf) bsum += v;
-    const mean = bsum / buf.length;
-    let vsum = 0;
-    for (const v of buf) vsum += (v - mean) ** 2;
-    const std = Math.sqrt(vsum / buf.length);
-    const minFlux = 0.02;
-    const threshold = mean + Math.max(minFlux, 0.7 * std);
+    // Self-normalizing shape: small transients stay subtle, big kicks saturate.
+    // Smooths to a real gain without tracking loudness to "always 1".
+    const lvl = trans / (trans + 0.06);
 
-    const now = performance.now();
-    if (flux > threshold && flux > minFlux && now - this._lastBeatAt > 90) {
-      this._pulse = 1;
-      this._lastBeatAt = now;
-    }
-
-    // Exponential decay: -100% in ~50 frames (~0.8s), roughly one kick at 120BPM.
-    this._pulse *= Math.pow(0.04, 1 / 50);
-
-    // Ambient floor keeps subtle motion between hits; the pulse dominates.
-    return Math.min(1, Math.max(this._pulse, level * 0.18));
+    // Short release so it visibly breathes back between hits.
+    this._env = Math.max(lvl, this._env * Math.exp(-dt / 0.16));
+    return Math.min(1, this._env);
   }
 
   static formatTime(ms, negative = false) {

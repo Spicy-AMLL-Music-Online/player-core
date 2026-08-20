@@ -175,18 +175,17 @@ export function setKawarpPlaybackState(isPlaying) {
 
 /**
  * Drive the dybg low-frequency volume effect (bass-reactive twist/zoom).
- * @param {number} level01 Normalized bass level 0..1, typically from
+ * @param {number} level01 Normalized beat envelope 0..1 from
  *   AudioPlayer.getLowFreqLevel(). Fall back to 0 when no tape is running.
+ *
+ * NOTE: dybg scales this by 1/10 internally, so to make a full-strength beat
+ * visibly punch (roughly 70% zoom) the value must go in an order of magnitude
+ * hotter than a raw 0..1 level.
  */
 export function setKawarpVolume(level01) {
   if (_dybg && typeof _dybg.setLowFreqVolume === 'function') {
-    const raw = Math.max(0, Math.min(1, level01 || 0));
-    // The bass band is rarely quiet in real music, so ignore a floor of
-    // constant energy — only energy above it reacts. Normalize + square so
-    // quiet passages stay still and drops punch.
-    const aboveFloor = Math.max(0, raw - 0.15) / 0.85;
-    const lvl = aboveFloor * aboveFloor;
-    _dybg.setLowFreqVolume(lvl * 0.6);
+    const raw = Math.max(0, Math.min(0.6, level01 || 0));
+    _dybg.setLowFreqVolume(raw * 0.8);
   }
 }
 
