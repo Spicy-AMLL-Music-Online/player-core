@@ -1210,6 +1210,9 @@ function createMusicalLine(container, startTime, endTime, oppositeAligned, lyric
 
   lineData._dotGroup = dotGroup;
   lineData._dots = [];
+  lineData._dotAnchor = null;
+  lineData._dotActive = false;
+  lineData._lastDotPos = undefined;
 
   const dotTime = totalTime / 3;
   const ci = lyricsType === "Syllable"

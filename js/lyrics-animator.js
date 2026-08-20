@@ -328,7 +328,7 @@ function clamp01(x) {
   return x < 0 ? 0 : x > 1 ? 1 : x;
 }
 
-// ── Interlude dots (AMLL dom/interlude-dots.ts, ported) ──
+// ── Interlude dots (AMLL dom/interlude-dots.ts, ported faithfully) ──
 
 // End-phase shrink with overshoot bounce
 function easeInOutBack(x) {
@@ -346,26 +346,53 @@ function easeOutExpo(x) {
 
 const TARGET_BREATHE_DURATION = 4500;
 
-// AMLL interlude dots: breathe (sine ±5%), light the 3 dots sequentially,
-// zoom in on entry (easeOutExpo, fade-in 0.5–1s) and shrink+hide on exit
-// (easeInOutBack bounce, fade out last 375ms).
+// AMLL interlude dots: on (re)entry the animation is re-anchored at the
+// current position so the entrance zoom/fade replays (new interlude or seek).
+// Then: sine breathing ±5%, dots light sequentially, exit shrink+bounce at
+// the end (last 750ms, fade 375ms), scaled to a 0.7 baseline.
 function advanceInterludeDots(line, position) {
   const group = line._dotGroup;
   const dots = line._dots;
   if (!group || !dots || dots.length < 3) return;
 
-  const duration = line.EndTime - line.StartTime;
-  if (duration <= 0) return;
-  const currentDuration = position - line.StartTime;
+  const startTime = line.StartTime;
+  const endTime = line.EndTime;
 
-  if (currentDuration < 0 || currentDuration >= duration) {
+  // Outside the interlude window: hide and forget the anchor.
+  if (position < startTime || position >= endTime) {
+    line._dotActive = false;
+    line._dotAnchor = null;
+    line._lastDotPos = position;
     setStyleIfChanged(group, 'scale', '0');
     setStyleIfChanged(group, 'opacity', '0');
     for (let i = 0; i < dots.length; i++) setStyleIfChanged(dots[i], 'opacity', '0');
     return;
   }
 
-  const breatheDuration = duration / Math.ceil(duration / TARGET_BREATHE_DURATION);
+  const prevActive = line._dotActive === true;
+  line._dotActive = true;
+  const lastPos = line._lastDotPos;
+
+  // AMLL setInterlude(): re-anchor when the interlude (re)starts or a seek
+  // jumps around (frame-to-frame position delta > 600ms implies a seek).
+  const seek = lastPos !== undefined && Math.abs(position - lastPos) > 600;
+  if (!prevActive || line._dotAnchor === null || line._dotAnchor === undefined || seek) {
+    line._dotAnchor = position;
+  }
+  line._lastDotPos = position;
+
+  const anchor = line._dotAnchor;
+  const interludeDuration = endTime - anchor;
+  const currentDuration = position - anchor;
+
+  if (currentDuration > interludeDuration) {
+    setStyleIfChanged(group, 'scale', '0');
+    setStyleIfChanged(group, 'opacity', '0');
+    for (let i = 0; i < dots.length; i++) setStyleIfChanged(dots[i], 'opacity', '0');
+    return;
+  }
+
+  const breatheDuration = interludeDuration / Math.ceil(interludeDuration / TARGET_BREATHE_DURATION);
   let scale = 1;
   let globalOpacity = 1;
 
@@ -378,23 +405,22 @@ function advanceInterludeDots(line, position) {
   else if (currentDuration < 1000) globalOpacity *= (currentDuration - 500) / 500;
 
   // Exit: shrink with bounce (last 750ms), fade out (last 375ms)
-  const remaining = duration - currentDuration;
+  const remaining = interludeDuration - currentDuration;
   if (remaining < 750) scale *= 1 - easeInOutBack((750 - remaining) / 750 / 2);
   if (remaining < 375) globalOpacity *= clamp01(remaining / 375);
 
-  const dotsDuration = Math.max(0, duration - 750);
-  scale = Math.max(0, scale) * 0.85;
+  const dotsDuration = Math.max(0, interludeDuration - 750);
+  scale = Math.max(0, scale) * 0.7;
 
   setStyleIfChanged(group, 'scale', scale.toFixed(4));
   setStyleIfChanged(group, 'opacity', globalOpacity.toFixed(3));
 
-  // Each dot lights up in sequence, holding 0.25 minimum brightness
+  // Each dot lights up in sequence at 1/3 of the lighting phase, min 0.25
   for (let i = 0; i < dots.length; i++) {
-    let dotOpacity = 0.25;
-    if (dotsDuration > 0) {
-      const xi = ((currentDuration - (dotsDuration / 3) * i) * 3) / dotsDuration * 0.75;
-      dotOpacity = Math.min(1, Math.max(0.25, xi));
-    }
+    const xi = dotsDuration > 0
+      ? ((currentDuration - (dotsDuration / 3) * i) * 3) / dotsDuration * 0.75
+      : 0.25;
+    const dotOpacity = dotsDuration > 0 ? Math.min(1, Math.max(0.25, xi)) : 0.25;
     setStyleIfChanged(dots[i], 'opacity', clamp01(globalOpacity * dotOpacity).toFixed(3));
   }
 }
