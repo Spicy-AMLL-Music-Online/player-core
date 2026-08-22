@@ -631,6 +631,12 @@
   opacity: 0.8;
 }
 
+.playback-control.skip-back img,
+.playback-control.skip-forward img {
+  width: 56px;
+  height: 56px;
+}
+
 .playback-control.play-pause img {
   width: 41px;
   height: 44px;
@@ -1903,6 +1909,12 @@ body.is-rendering .NowBar {
     opacity: 0.85 !important;
   }
 
+  .playback-control.skip-back img,
+  .playback-control.skip-forward img {
+    width: 42px !important;
+    height: 42px !important;
+  }
+
   .playback-control.play-pause img {
     width: 48px !important;
     height: 48px !important;
@@ -2304,6 +2316,12 @@ body.is-rendering .NowBar {
   #SpicyLyricsPage .ContentBox .NowBar.centered .NowBarControls .playback-control img {
     width: 32px !important;
     height: 32px !important;
+  }
+
+  #SpicyLyricsPage .ContentBox .NowBar.centered .NowBarControls .playback-control.skip-back img,
+  #SpicyLyricsPage .ContentBox .NowBar.centered .NowBarControls .playback-control.skip-forward img {
+    width: 46px !important;
+    height: 46px !important;
   }
 
   #SpicyLyricsPage .ContentBox .NowBar.centered .NowBarControls .playback-control.play-pause img {

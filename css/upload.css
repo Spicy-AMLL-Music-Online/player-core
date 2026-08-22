@@ -132,7 +132,7 @@
 /* ── Layout ── */
 .am-layout {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 215px 1fr;
   height: 100vh;
   width: 100vw;
   overflow: hidden;
@@ -143,71 +143,62 @@
    SIDEBAR
    ══════════════════════════════════════════════════ */
 .am-sidebar {
-  background: rgba(20, 20, 20, 0.95);
+  background: rgba(18, 18, 20, 0.95);
   border-right: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   flex-direction: column;
-  padding: 20px 0;
+  padding: 14px 0 12px 0;
   overflow-y: auto;
   user-select: none;
   -webkit-user-select: none;
+  scrollbar-width: thin;
+}
+
+.am-sidebar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.am-sidebar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
 }
 
 .am-sidebar-brand {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 24px 28px;
+  gap: 8px;
+  padding: 2px 14px 14px 14px;
 }
 
 .am-sidebar-logo {
-  width: 36px;
-  height: 36px;
+  width: 22px;
+  height: 22px;
   object-fit: contain;
-  filter: drop-shadow(0 2px 8px rgba(254, 36, 60, 0.5));
+  filter: drop-shadow(0 2px 6px rgba(254, 36, 60, 0.4));
 }
 
 .am-sidebar-title {
   font-family: var(--spicy-font-family);
-  font-size: 1.15rem;
-  font-weight: 900;
-  letter-spacing: -0.03em;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   color: #fff;
-}
-/* CSS Fix in upload.css */
-.am-main-content {
-  margin-left: 260px;
-  width: calc(100% - 260px);
-  position: relative;
-  z-index: 1;
-}
-
-@media (max-width: 768px) {
-  .am-main-content {
-    margin-left: 0;
-    width: 100%;
-    padding-top: 70px;
-  }
-
-  .am-sidebar {
-    z-index: 1000;
-  }
 }
 
 /* ── Sidebar Sections ── */
 .am-sidebar-section {
-  padding: 0 12px;
-  margin-bottom: 24px;
+  padding: 0 6px;
+  margin-bottom: 12px;
 }
 
 .am-section-label {
-  font-size: 0.7rem;
+  font-size: 0.64rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   color: rgba(255, 255, 255, 0.35);
-  padding: 0 12px;
-  margin-bottom: 8px;
+  padding: 0 10px;
+  margin-bottom: 3px;
 }
 
 .am-sidebar-nav {
@@ -216,35 +207,37 @@
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .am-nav-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  border-radius: 10px;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 7px;
   cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 0.92rem;
+  transition: all 0.15s ease;
+  font-size: 0.82rem;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.65);
+  line-height: 1.2;
 }
 
 .am-nav-item:hover {
   background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .am-nav-item.am-nav-active {
-  background: rgba(250, 36, 60, 0.15);
+  background: rgba(250, 36, 60, 0.16);
   color: #fa243c;
+  font-weight: 600;
 }
 
 .am-nav-item svg {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
   opacity: 0.8;
 }
@@ -256,13 +249,14 @@
 /* ── Sidebar Footer ── */
 .am-sidebar-footer {
   margin-top: auto;
-  padding: 20px 24px;
+  padding: 12px 14px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .am-sidebar-footer p {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: rgba(255, 255, 255, 0.25);
+  margin: 0;
 }
 
 .am-sidebar-footer a {
