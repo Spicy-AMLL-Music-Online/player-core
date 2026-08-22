@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
 
 <head>
   <meta charset="UTF-8">
@@ -39,7 +39,22 @@
           showCacheModal();
         });
 
-      function showCacheModal() {
+      async function showCacheModal() {
+        let title = 'Application Updated!';
+        let desc = 'A premium new update has been installed! To apply these changes and prevent playlist errors, please clear your browser cache or perform a hard reload.';
+        let reloadBtn = 'Reload Application';
+        let dismissBtn = 'Dismiss';
+
+        try {
+          const i18n = await import('./js/i18n.js');
+          if (i18n.t) {
+            title = i18n.t('player_update_title');
+            desc = i18n.t('player_update_desc');
+            reloadBtn = i18n.t('player_reload_btn');
+            dismissBtn = i18n.t('player_dismiss_btn');
+          }
+        } catch (e) {}
+
         const style = document.createElement('style');
         style.textContent = `
           @keyframes spicyFadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -114,14 +129,12 @@
         modal.innerHTML = `
           <div class="spicy-update-box">
             <div class="spicy-update-logo">🌶️</div>
-            <h2 class="spicy-update-title">Application Updated!</h2>
+            <h2 class="spicy-update-title">${title}</h2>
             <p class="spicy-update-desc">
-              A premium new update has been installed! To apply these changes and prevent playlist errors, please clear your browser cache or perform a hard reload.
-              <br><br>
-              <strong>Shortcut:</strong> Press <code>Ctrl + F5</code> (Windows) or <code>Cmd + Shift + R</code> (Mac).
+              ${desc}
             </p>
-            <button class="spicy-update-btn" onclick="window.location.reload(true)">Reload Application</button>
-            <button class="spicy-update-dismiss" onclick="document.getElementById('spicy-cache-detector-modal').remove()">Dismiss</button>
+            <button class="spicy-update-btn" onclick="window.location.reload(true)">${reloadBtn}</button>
+            <button class="spicy-update-dismiss" onclick="document.getElementById('spicy-cache-detector-modal').remove()">${dismissBtn}</button>
           </div>
         `;
         document.body.appendChild(modal);
@@ -138,7 +151,7 @@
   
 
     <!-- Back Button -->
-    <button class="back-button" id="back-button" title="Back to upload">
+    <button class="back-button" id="back-button" title="Back to upload" data-i18n-title="player_btn_back">
       <img src="icons/back.png" alt="Back">
     </button>
 
@@ -160,10 +173,10 @@
                 <div class="Artists" id="artists">—</div>
               </div>
               <div class="MetadataActions">
-                <button class="favorite-button" id="btn-favorite" title="Favorite">
+                <button class="favorite-button" id="btn-favorite" title="Favorite" data-i18n-title="ctx_favorite">
                   <img src="icons/favorite.png" alt="Favorite" id="favorite-icon" width="32" height="32">
                 </button>
-                <button class="options-button" id="btn-options">
+                <button class="options-button" id="btn-options" title="Player Settings" data-i18n-title="player_settings">
                   <img src="icons/settings.png" id="setting-icon" alt="Settings" width="32" height="32">
                 </button>
               </div>
@@ -185,25 +198,25 @@
               <div class="quality-badge" id="quality-badge">
                 <img src="icons/lossless.png" alt="Lossless" id="quality-badge-icon"
                   style="width: 17px; height: 14px; margin-right: 4px;">
-                <span id="quality-badge-text">Lossless</span>
+                <span id="quality-badge-text" data-i18n="player_quality_lossless">Lossless</span>
               </div>
             </div>
 
             <!-- Integrated Playback Controls -->
             <div class="NowBarControls">
-              <div class="playback-control shuffle" id="btn-shuffle" title="Shuffle">
+              <div class="playback-control shuffle" id="btn-shuffle" title="Shuffle" data-i18n-title="player_btn_shuffle">
                 <img src="icons/button_icon_shuffle.png" alt="Shuffle" id="shuffle-icon">
               </div>
-              <div class="playback-control skip-back" id="btn-backward" title="Previous">
+              <div class="playback-control skip-back" id="btn-backward" title="Previous" data-i18n-title="player_btn_prev">
                 <img src="icons/rewind.png" alt="Previous">
               </div>
-              <div class="playback-control play-pause" id="btn-play-pause" title="Play/Pause">
+              <div class="playback-control play-pause" id="btn-play-pause" title="Play/Pause" data-i18n-title="player_btn_play_pause">
                 <img src="icons/paused.png" alt="Play" id="play-pause-icon">
               </div>
-              <div class="playback-control skip-forward" id="skip-forward" title="Next">
+              <div class="playback-control skip-forward" id="skip-forward" title="Next" data-i18n-title="player_btn_next">
                 <img src="icons/forward.png" alt="Next">
               </div>
-              <div class="playback-control repeat" id="btn-repeat" title="Repeat">
+              <div class="playback-control repeat" id="btn-repeat" title="Repeat" data-i18n-title="player_btn_repeat">
                 <img src="icons/repeat.svg" alt="Repeat" id="repeat-icon">
               </div>
             </div>
@@ -227,7 +240,7 @@
           <div class="LyricsNotice" id="lyrics-notice">
             <img src="icons/giphy.gif" id="lyrics-loader-gif" alt="Loading..."
               style="width: 80px; height: 80px; margin-bottom: 20px; object-fit: contain;">
-            <span class="notice-descriptor">Finding Lyrics</span>
+            <span class="notice-descriptor" data-i18n="player_finding_lyrics">Finding Lyrics</span>
           </div>
         </div>
       </div>
@@ -235,9 +248,9 @@
       <!-- Queue Panel (Apple Music Style) -->
       <div class="QueuePanel" id="queue-panel">
         <div class="QueueHeader">
-          <h3>Up Next</h3>
+          <h3 data-i18n="upload_up_next">Up Next</h3>
           <div class="QueueActions">
-            <button id="queue-clear">Clear</button>
+            <button id="queue-clear" data-i18n="search_clear">Clear</button>
             <button id="queue-close">✕</button>
           </div>
         </div>
@@ -286,9 +299,8 @@
     import { escapeHTML } from './js/security-utils.js';
     import extensionManager from './js/extensions.js';
     import { generateTTML } from './js/ttml-parser.js';
-
-
     import isRtl from './js/is-rtl.js';
+    import { t, getCurrentLang, applyDOMTranslations, formatLocalizedDate, formatLocalizedYear } from './js/i18n.js';
 
     // ── Elements ──
     const lyricsContent = document.getElementById('lyrics-content');
@@ -325,6 +337,16 @@
     const btnTranslation = document.getElementById('btn-translation');
 
     // ── State ──
+    // Strictly enforce LTR mode on player.html at all times
+    document.documentElement.dir = 'ltr';
+    document.documentElement.setAttribute('dir', 'ltr');
+    if (document.body) document.body.setAttribute('dir', 'ltr');
+    window.addEventListener('spicy-lang-changed', () => {
+      document.documentElement.dir = 'ltr';
+      document.documentElement.setAttribute('dir', 'ltr');
+      if (document.body) document.body.setAttribute('dir', 'ltr');
+    });
+
     let songMetadata = { title: '', artist: '', album: '', artUrl: null };
     const player = new AudioPlayer();
     window.spicyPlayer = player;
@@ -405,6 +427,13 @@
       await extensionManager.loadFromStorage();
       extensionManager.loadAllExtensions();
       
+      applyDOMTranslations();
+      window.addEventListener('spicy-lang-changed', (e) => {
+        applyDOMTranslations();
+        document.documentElement.lang = e.detail.lang;
+        document.documentElement.dir = e.detail.dir;
+      });
+
       showGlobalLoader();
       await refreshQueue();
       await loadTrack(getCurrentIndex());
@@ -571,9 +600,9 @@
       }
 
       if (!track.buffer && track.amTrackId) {
-        showNotice('⬇️ Streaming track...');
+        showNotice(`⬇️ ${t('loading_download')}`);
         try {
-          const audioUrl = `https://spicyamllplayer-api.hf.space/download?song=${track.amTrackId}`;
+          const audioUrl = `https://spicyamllplayer-api.hf.space/download?song=${track.amTrackId}&l=${getCurrentLang()}`;
           const response = await fetch(audioUrl);
           if (!response.ok) throw new Error("HTTP " + response.status);
           const buf = await response.arrayBuffer();
@@ -612,7 +641,7 @@
         } catch (e) {
           console.error("Failed to stream track:", e);
           hideTrackLoader();
-          showNotice("❌ Streaming failed: " + e.message);
+          showNotice(`❌ ${t('player_stream_failed')}: ${e.message}`);
           setTimeout(() => {
             const next = getCurrentIndex() + 1;
             if (next < currentQueue.length) loadTrack(next);
@@ -627,7 +656,7 @@
       lyricsContent.innerHTML = '';
       lyricsType = 'None';
       if (sourceBadge) sourceBadge.textContent = '';
-      showNotice('⏳ Loading track...');
+      showNotice(`⏳ ${t('player_loading_track')}`);
 
       albumArt.innerHTML = '';
       albumArt.className = 'MediaImageContainer';
@@ -659,7 +688,7 @@
 
         if (track.ttml && track.ttml !== '__AUTO_FETCH__') {
           try {
-            showNotice('Loading Lyrics');
+            showNotice(t('player_loading_lyrics'));
             await new Promise(r => setTimeout(r, 300));
             parsedLyrics = parseTTMLToLyrics(track.ttml);
             window._spicyCurrentLyrics = parsedLyrics;
@@ -667,7 +696,7 @@
             if (sourceBadge) sourceBadge.textContent = "LYRICS: TTML";
           } catch (e) {
             console.error("Lyrics parse failed", e);
-            showNotice("Failed to parse local lyrics");
+            showNotice(t('player_failed_parse_local'));
           }
         } else {
           autoFetchLyrics(songMetadata, track.amTrackId);
@@ -681,13 +710,13 @@
                 parsedLyrics.SongWriters = writers;
                 const creditsEl = lyricsContent.querySelector('.Credits');
                 if (creditsEl) {
-                  creditsEl.textContent = `Written by: ${writers.join(', ')}`;
+                  creditsEl.textContent = `${t('player_written_by')}: ${writers.join(', ')}`;
                 } else {
                   const scrollContainer = lyricsContent.querySelector('.SpicyLyricsScrollContainer');
                   if (scrollContainer) {
                     const newCredits = document.createElement('div');
                     newCredits.className = 'Credits';
-                    newCredits.textContent = `Written by: ${writers.join(', ')}`;
+                    newCredits.textContent = `${t('player_written_by')}: ${writers.join(', ')}`;
                     const spacer = scrollContainer.querySelector('.lyrics-spacer');
                     if (spacer) scrollContainer.insertBefore(newCredits, spacer);
                     else scrollContainer.appendChild(newCredits);
@@ -728,7 +757,7 @@
           cleanup();
           console.error('[loadTrack] Audio decode failed:', err ? { code: err.code, message: err.message } : 'Unknown error');
           hideTrackLoader();
-          showNotice('Failed to load track. Skipping...');
+          showNotice(t('player_track_failed'));
           setTimeout(() => {
             const next = getCurrentIndex() + 1;
             if (next < currentQueue.length) loadTrack(next);
@@ -742,7 +771,7 @@
             cleanup();
             console.error('[loadTrack] loadedmetadata timeout — audio element failed to decode');
             hideTrackLoader();
-            showNotice('Track load timed out. Skipping...');
+            showNotice(t('player_track_failed'));
             setTimeout(() => {
               const next = getCurrentIndex() + 1;
               if (next < currentQueue.length) loadTrack(next);
@@ -769,7 +798,7 @@
 
         if (!nextTrack.buffer && nextTrack.amTrackId) {
           console.log(`[Preloader] Preloading next track in queue: ${nextTrack.name}`);
-          const audioUrl = `https://spicyamllplayer-api.hf.space/download?song=${nextTrack.amTrackId}`;
+          const audioUrl = `https://spicyamllplayer-api.hf.space/download?song=${nextTrack.amTrackId}&l=${getCurrentLang()}`;
           const response = await fetch(audioUrl);
           if (!response.ok) throw new Error("HTTP " + response.status);
           const buf = await response.arrayBuffer();
@@ -796,18 +825,15 @@
       if (metadata.title) {
         songNameEl.querySelector('span').textContent = metadata.title;
         document.title = `Spicy AMLL Player — ${metadata.title}`;
-
-        if (isRtl(metadata.title)) songNameEl.classList.add('rtl');
-        else songNameEl.classList.remove('rtl');
+        songNameEl.classList.remove('rtl');
       }
       if (metadata.artist) {
-        const yearStr = (metadata.year && settingsManager.get("releaseYearPosition") !== "Off") ? metadata.year : "";
+        const rawYear = metadata.year || (metadata.releaseDate ? formatLocalizedYear(metadata.releaseDate) : "");
+        const yearStr = (rawYear && settingsManager.get("releaseYearPosition") !== "Off") ? formatLocalizedYear(rawYear) : "";
         const yearPos = settingsManager.get("releaseYearPosition");
         const artistText = yearStr ? (yearPos === "Before Artist" ? `${yearStr} • ${metadata.artist}` : `${metadata.artist} • ${yearStr}`) : metadata.artist;
         artistsEl.textContent = artistText;
-
-        if (isRtl(metadata.artist)) artistsEl.classList.add('rtl');
-        else artistsEl.classList.remove('rtl');
+        artistsEl.classList.remove('rtl');
       }
 
       if (metadata.artUrl) {
@@ -833,12 +859,12 @@
     }
 
     async function autoFetchLyrics(metadata, amTrackId = null) {
-      showNotice('Finding Lyrics');
+      showNotice(t('player_finding_lyrics'));
       try {
         const durationSec = player.duration / 1000 || 0;
         const result = await retrieveTTML(metadata.title, metadata.artist, metadata.album, durationSec, amTrackId);
         if (result && result.lyricsData) {
-          showNotice('Loading Lyrics');
+          showNotice(t('player_loading_lyrics'));
           await new Promise(resolve => setTimeout(resolve, 300));
 
           // Attach maker metadata for the credits renderer
@@ -866,11 +892,11 @@
             }
           }
         } else {
-          showNotice('No lyrics found.');
+          showNotice(t('player_no_lyrics'));
         }
       } catch (err) {
         console.error("Auto-fetch error:", err);
-        showNotice('Could not fetch lyrics');
+        showNotice(t('player_could_not_fetch'));
       }
     }
 
@@ -1436,26 +1462,26 @@
 
       queueForceScroll();
 
-      // 2. Measure Last State & Animate (Last, Invert, Play)
+      // 2. Measure Last State & Animate from Bottom-Right Corner (FLIP)
       if (isMobile && mediaBox && firstRect) {
         const lastRect = mediaBox.getBoundingClientRect();
 
-        // Calculate size and position differences
-        const dX = firstRect.left - lastRect.left;
-        const dY = firstRect.top - lastRect.top;
+        // Calculate size and position differences relative to bottom-right corner
+        const dX = firstRect.right - lastRect.right;
+        const dY = firstRect.bottom - lastRect.bottom;
         const dW = firstRect.width / lastRect.width;
         const dH = firstRect.height / lastRect.height;
 
-        // Invert: Apply styles to put the element back in the starting position instantly
+        // Invert: Put element back in starting position relative to bottom-right
         mediaBox.style.transition = 'none';
-        mediaBox.style.transformOrigin = 'top left';
+        mediaBox.style.transformOrigin = 'bottom right';
         mediaBox.style.transform = `translate(${dX}px, ${dY}px) scale(${dW}, ${dH})`;
 
         // Force layout reflow
         mediaBox.offsetWidth;
 
-        // Play: Clear transform and restore transition
-        mediaBox.style.transition = 'transform 0.6s cubic-bezier(0.25, 1.1, 0.2, 1.05)';
+        // Play: Smooth enlarging/shrinking from down right corner
+        mediaBox.style.transition = 'transform 0.65s cubic-bezier(0.16, 1, 0.3, 1)';
         mediaBox.style.transform = 'none';
 
         // Clean up styles after animation completes
@@ -1463,7 +1489,7 @@
           mediaBox.style.transition = '';
           mediaBox.style.transformOrigin = '';
           mediaBox.style.transform = '';
-        }, 600);
+        }, 650);
       }
 
       if (isMobile && metadataRow && firstMetaRect) {
@@ -1769,20 +1795,20 @@
     function updateRomanizationBtnState(isRomanized) {
       if (isRomanized) {
         btnRomanization.classList.add('active');
-        btnRomanization.querySelector('.text').textContent = 'Romanized: On';
+        btnRomanization.querySelector('.text').textContent = t('player_romanized_on');
       } else {
         btnRomanization.classList.remove('active');
-        btnRomanization.querySelector('.text').textContent = 'Romanized: Off';
+        btnRomanization.querySelector('.text').textContent = t('player_romanized_off');
       }
     }
 
     function updateTranslationBtnState(isTranslated) {
       if (isTranslated) {
         btnTranslation.classList.add('active');
-        btnTranslation.querySelector('.text').textContent = 'Translation: On';
+        btnTranslation.querySelector('.text').textContent = t('player_translation_on');
       } else {
         btnTranslation.classList.remove('active');
-        btnTranslation.querySelector('.text').textContent = 'Translation: Off';
+        btnTranslation.querySelector('.text').textContent = t('player_translation_off');
       }
     }
 
@@ -1864,6 +1890,17 @@
     init();
     startAnimationLoop();
     btnOptions.onclick = () => settingsUI.show();
+
+    // Auto-open settings if launched with openSettings URL parameter (e.g. from index.html iframe)
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('openSettings') === '1' || urlParams.get('openSettings') === 'true') {
+      setTimeout(() => settingsUI.show(), 100);
+    }
+    window.addEventListener('message', (e) => {
+      if (e.data === 'openSettings' || e.data?.action === 'openSettings') {
+        settingsUI.show();
+      }
+    });
 
     // ── Live Settings Refresh ──
     window.addEventListener('spicy-settings-changed', () => {
@@ -1964,9 +2001,7 @@
         <img src="icons/lyricson.png" alt="Lyrics" id="lyrics-icon">
       </button>
       <button class="queue-button" id="btn-queue" title="Up Next">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <path d="M3 17h12v-2H3v2zm0-5h12v-2H3v2zm0-5v2h12V7H3zm13 4v10l8-5-8-5z" />
-        </svg>
+                <img src="icons/queue.png" alt="Queue" id="queue-icon">
       </button>
     </div>
   </div>
