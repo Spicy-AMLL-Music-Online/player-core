@@ -347,7 +347,6 @@ export default class AudioPlayer {
     this._pulse *= Math.exp(-dt / 0.09);
     return Math.min(1, this._pulse);
   }
-  }
 
   static formatTime(ms, negative = false) {
     if (isNaN(ms)) return '0:00';

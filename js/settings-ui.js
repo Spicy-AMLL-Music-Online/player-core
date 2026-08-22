@@ -6,6 +6,7 @@ import { GeniusService } from "./genius-service.js";
 import { getQueue, getCurrentIndex } from "./router.js";
 import { escapeHTML } from "./security-utils.js";
 import extensionManager from "./extensions.js";
+import { t } from "./i18n.js";
 
 /**
  * settings-ui.js
@@ -67,7 +68,7 @@ class SettingsUI {
     const header = document.createElement("div");
     header.className = "SpicyLyricsSettingsHeader";
     header.innerHTML = `
-      <span>Player Settings</span>
+      <span>${t('player_settings')}</span>
       <button class="SpicyLyricsSettingsHeaderClose">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -102,7 +103,8 @@ class SettingsUI {
     TABS.forEach(tab => {
       const btn = document.createElement("button");
       btn.className = `sl-sidebar-tab ${tab.id === this.activeTab ? "active" : ""}`;
-      btn.innerHTML = `${tab.icon} <span>${tab.label}</span>`;
+      const tabLabel = t(`settings_tab_${tab.id}`) || tab.label;
+      btn.innerHTML = `${tab.icon} <span>${tabLabel}</span>`;
       btn.dataset.tabId = tab.id;
 
       if (tab.id === "developer") {
